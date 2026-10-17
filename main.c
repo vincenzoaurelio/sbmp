@@ -177,6 +177,8 @@ int main(int argc, char **argv)
   visualize(out, "sharpker");
   freemat(out); freemat(k);
 
+  /* ---------- Sobel ---------- */
+
   k = sobelxker();
   if (!k) goto error;
   out = rgbconv(img, k);
@@ -191,8 +193,6 @@ int main(int argc, char **argv)
   visualize(out, "sobelyker");
   freemat(out); freemat(k);
 
-  /* ---- grayscale + sobel magnitude ---- */
-
   gray = rgb2grey(img);
   if (!gray) goto error;
 
@@ -204,8 +204,6 @@ int main(int argc, char **argv)
   visualize(vis, "sobelmagnitude");
   freemat(vis);
 
-  /* ---- sobel orientation ---- */
-
   ori = sobelori(gray);
   if (!ori) goto error;
   int **i;
@@ -214,7 +212,6 @@ int main(int argc, char **argv)
   visualize(i, "sobelorientation");
   freemat(i);
 
-  /* ---- success cleanup ---- */
   freemat(ori);
   freemat(mag);
   freemat(gray);
