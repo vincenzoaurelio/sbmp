@@ -14,10 +14,15 @@
 #define MULTITHREAD_THRESHOLD_MATMAT     2500   /* matrows * matcols */
 #define MULTITHREAD_THRESHOLD_MATVEC   250000   /* matrows * matcols */
 #define MULTITHREAD_THRESHOLD_VECVEC   100000   /* vecsize           */
+/* when R*C*P*Q > N^2 * log2(N) FFT is better
+ * N is the next power of two of max(R+P-1, C+Q-1)).
+ * Is used an empirical threshold on the number of direct operations to avoid
+ * to compute nextpow2 every call of conv */
+#define FFT_THRESHOLD_CONV  (1u << 22) 
 
 /* =========================================================================
  * Create special matrices and vectors of arbitrary type with dimentions
-n * inside the header.
+ n * inside the header.
  * The object parsed to the other functions of the library is a pointer or a
  * pointer to a pointer that hides informations behind the head of the array.
  *
@@ -58,7 +63,7 @@ n * inside the header.
     for (size_t _i = 0; _i < (rr); ++_i) m[_i] = data + _i * (cc);	\
   } while(0)
 
-#define zeros(m,rr,cc)						\
+#define zeros(m,rr,cc)							\
   do {									\
     header_t *_h = xcalloc(1,sizeof(**(m))*(rr)*(cc)+			\
 			   (rr)*sizeof(*(m))+sizeof(*_h));		\
@@ -147,7 +152,7 @@ float **randmat(size_t r, size_t c, int max);
 	       default: printf("(unsupported type)"));			\
     }									\
     printf("}\n");							\
-} while(0)
+  } while(0)
 
 #define printm(mat)							\
   do {									\
@@ -272,32 +277,32 @@ float dotproduct(float *a, float *b);
 
 /* returns the greatest element, in absolute value, in a vector.
  * If the vector's length is 0, 0 is returned */
-#define vmax(vec)							\
-  ({									\
-    double _max=0;							\
-    for (size_t _i=0;_i<vecsize(vec);++_i)				\
-      _max=fmax(_max, fabs((vec)[_i]));					\
-    (typeof((vec)[0]))_max;						\
+#define vmax(vec)				\
+  ({						\
+    double _max=0;				\
+    for (size_t _i=0;_i<vecsize(vec);++_i)	\
+      _max=fmax(_max, fabs((vec)[_i]));		\
+    (typeof((vec)[0]))_max;			\
   })
 
 /* returns the smallest element in a matrix */
-#define matmin(mat)						\
-  ({								\
-    float _m = INFINITY;						\
-    for (size_t _i = 0; _i < matrows(mat); ++_i)		\
-      for (size_t _j = 0; _j < matcols(mat); ++_j)		\
-        _m = fminf(_m, (mat)[_i][_j]);				\
-    _m;								\
+#define matmin(mat)					\
+  ({							\
+    float _m = INFINITY;				\
+    for (size_t _i = 0; _i < matrows(mat); ++_i)	\
+      for (size_t _j = 0; _j < matcols(mat); ++_j)	\
+        _m = fminf(_m, (mat)[_i][_j]);			\
+    _m;							\
   })
 
 /* returns the greatest element in a matrix */
-#define matmax(mat)						\
-  ({								\
-    float _m = -INFINITY;					\
-    for (size_t _i = 0; _i < matrows(mat); ++_i)		\
-      for (size_t _j = 0; _j < matcols(mat); ++_j)		\
-        _m = fmaxf(_m, (mat)[_i][_j]);				\
-    _m;								\
+#define matmax(mat)					\
+  ({							\
+    float _m = -INFINITY;				\
+    for (size_t _i = 0; _i < matrows(mat); ++_i)	\
+      for (size_t _j = 0; _j < matcols(mat); ++_j)	\
+        _m = fmaxf(_m, (mat)[_i][_j]);			\
+    _m;							\
   })
 
 
@@ -315,6 +320,11 @@ float **rgb2grey(int **img);
 int **pack_image(float **R, float **G, float **B);
 void rescaleu8(float **I);
 
+/* ------------------------------ convolution ------------------------------ */
+#ifdef DEBUG
+float **conv_standard(float **m, float **k);
+float **conv_fft(float **m, float **k);
+#endif
 float **conv(float **m, float **k);
 /* Gaussian kernel of size n x n. If sigma <= 0, is used the OpenCV heuristic
  * for choosing a Gaussian standard deviation when only the kernel size n is
@@ -405,25 +415,25 @@ float **sobelori(float **I);
   } while (0)
 
 
-#define imgmin(I,J)						\
-  do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
-    if (matrows(J) == _r && matcols(J) == _c) {			\
-      for (size_t _i = 0; _i < _r; ++_i)			\
-        for (size_t _j = 0; _j < _c; ++_j)			\
-          (I)[_i][_j] = min((I)[_i][_j], (J)[_i][_j]);		\
-    }								\
+#define imgmin(I,J)					\
+  do {							\
+    size_t _r = matrows(I), _c = matcols(I);		\
+    if (matrows(J) == _r && matcols(J) == _c) {		\
+      for (size_t _i = 0; _i < _r; ++_i)		\
+        for (size_t _j = 0; _j < _c; ++_j)		\
+          (I)[_i][_j] = min((I)[_i][_j], (J)[_i][_j]);	\
+    }							\
   } while (0)
 
 
-#define imgmax(I,J)						\
-  do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
-    if (matrows(J) == _r && matcols(J) == _c) {			\
-      for (size_t _i = 0; _i < _r; ++_i)			\
-        for (size_t _j = 0; _j < _c; ++_j)			\
-          (I)[_i][_j] = max((I)[_i][_j], (J)[_i][_j]);		\
-    }								\
+#define imgmax(I,J)					\
+  do {							\
+    size_t _r = matrows(I), _c = matcols(I);		\
+    if (matrows(J) == _r && matcols(J) == _c) {		\
+      for (size_t _i = 0; _i < _r; ++_i)		\
+        for (size_t _j = 0; _j < _c; ++_j)		\
+          (I)[_i][_j] = max((I)[_i][_j], (J)[_i][_j]);	\
+    }							\
   } while (0)
 
 /* saturation to 255 */
@@ -485,12 +495,12 @@ float **sobelori(float **I);
 #define square(I) mult(I,I)
 
 /* normalized in [0, 255] */
-#define squareroot(I)					\
-  do {							\
-    size_t _r = matrows(I), _c = matcols(I);		\
-    for (size_t _i = 0; _i < _r; ++_i)			\
-      for (size_t _j = 0; _j < _c; ++_j)		\
-        (I)[_i][_j] = sqrtf((I)[_i][_j]);		\
+#define squareroot(I)				\
+  do {						\
+    size_t _r = matrows(I), _c = matcols(I);	\
+    for (size_t _i = 0; _i < _r; ++_i)		\
+      for (size_t _j = 0; _j < _c; ++_j)	\
+        (I)[_i][_j] = sqrtf((I)[_i][_j]);	\
   } while (0)
 
 #ifdef IMG_IMPLEMENTATION
@@ -501,6 +511,7 @@ float **sobelori(float **I);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <complex.h>
 
 inline void *xmalloc(size_t size) //malloc wrapper
 {
@@ -535,7 +546,7 @@ float *randvec(size_t l, int max)
 {
   float *v = NULL;
   createvec(v,l);
-                     /* generates a random float in the [0,max] interval */
+  /* generates a random float in the [0,max] interval */
   for(size_t i=0;i<l;++i) v[i] = (float)rand()/RAND_MAX*(float)(max); 
     						    
   return v;					    
@@ -893,7 +904,282 @@ int **pack_image(float **R, float **G, float **B)
   return img;
 }
 
-float **conv(float **m, float **k)
+float **gaussker(size_t n, float sigma)
+{
+  if (n == 0) return NULL;
+
+  if (sigma <= 0.0f)
+    sigma = 0.3f * ((float)n - 1.0f) * 0.5f - 1.0f + 0.8f;
+
+  float **k = NULL;
+  zeros(k, n, n);
+
+  const float center = ((float)n - 1.0f) * 0.5f;
+  const float inv2s2 = 1.0f / (2.0f * sigma * sigma);
+  float sum = 0.0f;
+
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      float di = (float)i - center;
+      float dj = (float)j - center;
+      float v  = expf(-(di * di + dj * dj) * inv2s2);
+      k[i][j] = v;
+      sum += v;
+    }
+  }
+
+  /* normalize so the filter preserves the overall brightness */
+  if (sum > 0.0f)
+    for (size_t i = 0; i < n; ++i)
+      for (size_t j = 0; j < n; ++j)
+	k[i][j] /= sum;
+
+  return k;
+}
+
+float **sharpker(void)
+{
+  float **k = NULL;
+  zeros(k, 3, 3);
+
+  k[0][0] =  0; k[0][1] = -1; k[0][2] =  0;
+  k[1][0] = -1; k[1][1] =  5; k[1][2] = -1;
+  k[2][0] =  0; k[2][1] = -1; k[2][2] =  0;
+
+  return k;
+}
+
+float **averageker(size_t n)
+{
+  if (n == 0) return NULL;
+
+  float **k = NULL;
+  zeros(k, n, n);
+
+  float val = 1.0 / (float)(n*n);
+  for (size_t i=0; i<n; ++i) for (size_t j=0; j<n; ++j) k[i][j] = val;
+
+  return k;
+}
+
+float **sobelxker(void)
+{
+  float **k = NULL;
+  zeros(k, 3, 3);
+
+  k[0][0] = -1; k[0][1] = 0; k[0][2] = 1;
+  k[1][0] = -2; k[1][1] = 0; k[1][2] = 2;
+  k[2][0] = -1; k[2][1] = 0; k[2][2] = 1;
+
+  return k;
+}
+
+float **sobelyker(void)
+{
+  float **k = NULL;
+  zeros(k, 3, 3);
+
+  k[0][0] = -1; k[0][1] = -2; k[0][2] = -1;
+  k[1][0] =  0; k[1][1] =  0; k[1][2] =  0;
+  k[2][0] =  1; k[2][1] =  2; k[2][2] =  1;
+
+  return k;
+}
+
+float **sobelmag(float **img)
+{
+  if (!img) return NULL;
+
+  float **mag = NULL;
+  
+  float **Kx = sobelxker();
+  float **Ky = sobelyker();
+
+  float **dx = conv(img, Kx);
+  float **dy = conv(img, Ky);
+
+  freemat(Kx);
+  freemat(Ky);
+
+  if (!dx || !dy) goto clean;
+
+  size_t r = matrows(img);
+  size_t c = matcols(img);
+  createmat(mag, r, c);
+
+  for (size_t i = 0; i<r; ++i)
+    for (size_t j = 0; j<c; ++j)
+      mag[i][j] = sqrtf(dx[i][j]*dx[i][j] + dy[i][j]*dy[i][j]);
+
+ clean:
+  freemat(dx);
+  freemat(dy);
+  return mag;
+}
+
+float **sobelori(float **img)
+{
+  if (!img) return NULL;
+  float **ori = NULL;
+  
+  float **Kx = sobelxker();
+  float **Ky = sobelyker();
+
+  float **dx = conv(img, Kx);
+  float **dy = conv(img, Ky);
+
+  freemat(Kx);
+  freemat(Ky);
+
+  if (!dx || !dy) goto clean;
+
+  size_t r = matrows(img);
+  size_t c = matcols(img);
+  createmat(ori, r, c);
+
+  for (size_t i = 0; i<r; ++i)
+    for (size_t j = 0; j<c; ++j)
+      ori[i][j] = atan2f(dy[i][j], dx[i][j]);
+
+ clean:
+  freemat(dx);
+  freemat(dy);
+  return ori;
+}
+
+void rescaleu8(float **img)
+{
+  static const int L = 0;
+  static const int H = 255;
+  uint8_t lut[256];
+  float M = matmax(img);
+  float m = matmin(img);
+  if (M == m) {
+    for (int i = 0; i < 256; ++i) lut[i] = (uint8_t)L;
+  } else {
+    float scale = (float)(H - L) / (float)(M - m);
+    for (int i = 0; i < 256; ++i) {
+      float v = ((float)i - (float)m) * scale + (float)L;
+      if (v < (float)L) v = (float)L;
+      if (v > (float)H) v = (float)H;
+      lut[i] = (uint8_t)(v + 0.5f);   /* round */
+    }
+  }
+  for (size_t i=0; i<matrows(img); ++i)
+    for (size_t j=0; j<matcols(img); ++j)
+      img[i][j] = lut[(uint8_t)img[i][j]];
+}
+
+/* ===============================Convolution=============================== */
+
+static void fft1d(double complex *a, size_t n, int inverse)
+{
+  if (n <= 1) return;
+
+  /* bit-reversal permutation */
+  for (size_t i = 1, j = 0; i < n; ++i) {
+    size_t bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) {
+      double complex t = a[i];
+      a[i] = a[j];
+      a[j] = t;
+    }
+  }
+
+  /* butterflies */
+  for (size_t len = 2; len <= n; len <<= 1) {
+    double ang = 2.0 * M_PI / (double)len * (inverse ? +1.0 : -1.0);
+    double complex wlen = cos(ang) + I * sin(ang);
+    for (size_t i = 0; i < n; i += len) {
+      double complex w = 1.0;
+      for (size_t j = 0; j < len / 2; ++j) {
+	double complex u = a[i + j];
+	double complex v = a[i + j + len / 2] * w;
+	a[i + j]             = u + v;
+	a[i + j + len / 2]   = u - v;
+	w *= wlen;
+      }
+    }
+  }
+
+  if (inverse) for (size_t i = 0; i < n; ++i) a[i] /= (double)n;
+}
+
+/* FFT 2D in-place  */
+static void fft2d(double complex *a, size_t n, int inverse)
+{
+  for (size_t i = 0; i < n; ++i) fft1d(a + i * n, n, inverse); // rows
+  
+  double complex *col = xmalloc(n * sizeof(*col)); // cloumns
+  for (size_t j = 0; j < n; ++j) {
+    for (size_t i = 0; i < n; ++i) col[i] = a[i * n + j];
+    fft1d(col, n, inverse);
+    for (size_t i = 0; i < n; ++i) a[i * n + j] = col[i];
+  }
+  free(col);
+}
+
+static inline size_t nextpow2(size_t n)
+{
+  size_t p=1;
+  while(p<n) p <<= 1;
+  return p;
+}
+
+/* FFT based 2D convolution
+ * conv_fft(m, k)[i,j] = sum_{u,v} m[i-u, j-v] * k[u, v] */
+float **conv_fft(float **m, float **k)
+{
+  if (!m || !k) return NULL;
+
+  const size_t R = matrows(m), C = matcols(m);
+  const size_t P = matrows(k), Q = matcols(k);
+  if (P == 0 || Q == 0) return NULL;
+  if ((P & 1) == 0 || (Q & 1) == 0) return NULL;   
+
+  const size_t fullR = R + P - 1;
+  const size_t fullC = C + Q - 1;
+
+  const size_t N = nextpow2(fullR > fullC ? fullR : fullC);
+  if (N == 0) return NULL;
+
+  double complex *A = xcalloc((size_t)N * N, sizeof(*A));
+  double complex *B = xcalloc((size_t)N * N, sizeof(*B));
+
+  /* copy m and k in A and B */
+  for (size_t i = 0; i < R; ++i)
+    for (size_t j = 0; j < C; ++j)
+      A[i * N + j] = m[i][j];
+
+  for (size_t i = 0; i < P; ++i)
+    for (size_t j = 0; j < Q; ++j)
+      B[i * N + j] = k[i][j];
+
+  fft2d(A, N, 0);
+  fft2d(B, N, 0);
+
+  for (size_t i = 0; i < N * N; ++i) A[i] *= B[i];
+
+  fft2d(A, N, 1);
+
+  const size_t p = P / 2;
+  const size_t q = Q / 2;
+
+  float **cv = NULL;
+  zeros(cv, R, C);
+
+  for (size_t i = 0; i < R; ++i)
+    for (size_t j = 0; j < C; ++j)
+      cv[i][j] = (float)creal(A[(i + p) * N + (j + q)]);
+
+  free(A);
+  free(B);
+  return cv;
+}
+
+float **conv_standard(float **m, float **k)
 {
   size_t r = matrows(m),   c = matcols(m);
   size_t p = matrows(k)/2, q = matcols(k)/2;
@@ -919,171 +1205,21 @@ float **conv(float **m, float **k)
   return cv;
 }
 
-float **gaussker(size_t n, float sigma)
+float **conv(float **m, float **k)
 {
-    if (n == 0) return NULL;
+    if (!m || !k) return NULL;
 
-    if (sigma <= 0.0f)
-        sigma = 0.3f * ((float)n - 1.0f) * 0.5f - 1.0f + 0.8f;
+    const size_t R = matrows(m), C = matcols(m);
+    const size_t P = matrows(k), Q = matcols(k);
+    if (P == 0 || Q == 0) return NULL;
 
-    float **k = NULL;
-    zeros(k, n, n);
+    if ((P & 1) == 0 || (Q & 1) == 0) return NULL; // even kernel
 
-    const float center = ((float)n - 1.0f) * 0.5f;
-    const float inv2s2 = 1.0f / (2.0f * sigma * sigma);
-    float sum = 0.0f;
+    const size_t op = R * C * P * Q; /* standard conv cost extimation */
 
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < n; ++j) {
-            float di = (float)i - center;
-            float dj = (float)j - center;
-            float v  = expf(-(di * di + dj * dj) * inv2s2);
-            k[i][j] = v;
-            sum += v;
-        }
-    }
-
-    /* normalize so the filter preserves the overall brightness */
-    if (sum > 0.0f)
-        for (size_t i = 0; i < n; ++i)
-            for (size_t j = 0; j < n; ++j)
-                k[i][j] /= sum;
-
-    return k;
+    return op < FFT_THRESHOLD_CONV ? conv_standard(m, k) : conv_fft(m, k); 
 }
 
-float **sharpker(void)
-{
-    float **k = NULL;
-    zeros(k, 3, 3);
-
-    k[0][0] =  0; k[0][1] = -1; k[0][2] =  0;
-    k[1][0] = -1; k[1][1] =  5; k[1][2] = -1;
-    k[2][0] =  0; k[2][1] = -1; k[2][2] =  0;
-
-    return k;
-}
-
-float **averageker(size_t n)
-{
-    if (n == 0) return NULL;
-
-    float **k = NULL;
-    zeros(k, n, n);
-
-    float val = 1.0 / (float)(n*n);
-    for (size_t i=0; i<n; ++i) for (size_t j=0; j<n; ++j) k[i][j] = val;
-
-    return k;
-}
-
-float **sobelxker(void)
-{
-    float **k = NULL;
-    zeros(k, 3, 3);
-
-    k[0][0] = -1; k[0][1] = 0; k[0][2] = 1;
-    k[1][0] = -2; k[1][1] = 0; k[1][2] = 2;
-    k[2][0] = -1; k[2][1] = 0; k[2][2] = 1;
-
-    return k;
-}
-
-float **sobelyker(void)
-{
-    float **k = NULL;
-    zeros(k, 3, 3);
-
-    k[0][0] = -1; k[0][1] = -2; k[0][2] = -1;
-    k[1][0] =  0; k[1][1] =  0; k[1][2] =  0;
-    k[2][0] =  1; k[2][1] =  2; k[2][2] =  1;
-
-    return k;
-}
-
-float **sobelmag(float **I)
-{
-  if (!I) return NULL;
-
-  float **mag = NULL;
-  
-  float **Kx = sobelxker();
-  float **Ky = sobelyker();
-
-  float **dx = conv(I, Kx);
-  float **dy = conv(I, Ky);
-
-  freemat(Kx);
-  freemat(Ky);
-
-  if (!dx || !dy) goto clean;
-
-  size_t r = matrows(I);
-  size_t c = matcols(I);
-  createmat(mag, r, c);
-
-  for (size_t i = 0; i<r; ++i)
-    for (size_t j = 0; j<c; ++j)
-      mag[i][j] = sqrtf(dx[i][j]*dx[i][j] + dy[i][j]*dy[i][j]);
-
- clean:
-  freemat(dx);
-  freemat(dy);
-  return mag;
-}
-
-float **sobelori(float **I)
-{
-  if (!I) return NULL;
-  float **ori = NULL;
-  
-  float **Kx = sobelxker();
-  float **Ky = sobelyker();
-
-  float **dx = conv(I, Kx);
-  float **dy = conv(I, Ky);
-
-  freemat(Kx);
-  freemat(Ky);
-
-  if (!dx || !dy) goto clean;
-
-  size_t r = matrows(I);
-  size_t c = matcols(I);
-  createmat(ori, r, c);
-
-  for (size_t i = 0; i<r; ++i)
-    for (size_t j = 0; j<c; ++j)
-      ori[i][j] = atan2f(dy[i][j], dx[i][j]);
-
- clean:
-  freemat(dx);
-  freemat(dy);
-  return ori;
-}
-
-void rescaleu8(float **I)
-{
-  static const int L = 0;
-  static const int H = 255;
-  uint8_t lut[256];
-  float M = matmax(I);
-  float m = matmin(I);
-  if (M == m) {
-    for (int i = 0; i < 256; ++i) lut[i] = (uint8_t)L;
-  } else {
-    float scale = (float)(H - L) / (float)(M - m);
-    for (int i = 0; i < 256; ++i) {
-      float v = ((float)i - (float)m) * scale + (float)L;
-      if (v < (float)L) v = (float)L;
-      if (v > (float)H) v = (float)H;
-      lut[i] = (uint8_t)(v + 0.5f);   /* round */
-    }
-  }
-  for (size_t i=0; i<matrows(I); ++i)
-    for (size_t j=0; j<matcols(I); ++j)
-      I[i][j] = lut[(uint8_t)I[i][j]];
-}
-
+/* ========================================================================= */
 #endif // IMG_IMPLEMENTATION
 #endif // IMG_H
