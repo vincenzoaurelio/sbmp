@@ -41,12 +41,22 @@ Binary operations:
 
 ## Examples
 - Convert an image to grayscale and write output on disk
-  `./sbmp ./imgs/lena.ppm -g -o ./imgs/lena-gray.ppm`
+  ```bash
+  ./sbmp ./imgs/lena.ppm -g -o ./imgs/lena-gray.ppm
+  ```
 - Apply a Gaussian blur
-  `./sbmp ./imgs/baboon.ppm -G 5`
+  ```bash
+  ./sbmp ./imgs/baboon.ppm -G 5
+  ```
 - Sharpen an image and write output on disk
-  `./sbmp ./imgs/peppers.ppm -S -o ./imgs/peppers-sharpened.ppm`
+  ```bash
+  ./sbmp ./imgs/peppers.ppm -S -o ./imgs/peppers-sharpened.ppm
+  ```
 - Calculate the Sobel magnitude on a grayscale image and write output on disk
-  `./sbmp ./imgs/peppers.ppm -g -m -o ./imgs/peppers-mag.ppm`
+  ```bash
+  ./sbmp ./imgs/peppers.ppm -g -m -o ./imgs/peppers-mag.ppm
+  ```
 - Multiply pixel values by a scalar
-  `./sbmp ./imgs/peppers2.ppm -p 2`
+  ```bash
+  ./sbmp ./imgs/peppers2.ppm -p 2
+  ```
