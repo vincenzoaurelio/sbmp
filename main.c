@@ -128,8 +128,6 @@ int **angle2rgb(float **ori)
   return img;
 }
 
-/* ============================ pipeline =================================== */
-
 typedef enum {
   OP_GREY     = 1 << 0,
   OP_GAUSS    = 1 << 1,
@@ -182,7 +180,6 @@ static int push_op(flag_t kind, char *arg)
   return 1;
 }
 
-/* apply a unary operation to img (int**), return a new int** */
 static int **apply_unary(int **img, flag_t kind, const char *arg)
 {
   int **out = NULL;
@@ -329,7 +326,6 @@ static int **apply_unary(int **img, flag_t kind, const char *arg)
   }
 }
 
-/* apply a binary operation between A and B (int**), return a new int** */
 static int **apply_binary(int **A, int **B, flag_t kind)
 {
   if (!A || !B) return NULL;
@@ -445,7 +441,7 @@ int main(int argc, char **argv)
     goto error;
   }
 
-  /* apply operations in order */
+  /* Operations are applied in order */
   for (int i = 0; i < nops; ++i) {
     int **next = NULL;
 
@@ -497,7 +493,6 @@ int main(int argc, char **argv)
  usage:
   fprintf(stderr,
 	  "Usage: %s INPUT [-o OUTPUT] [options...]\n"
-	  "\n"
 	  "  -o FILE    output image\n"
 	  "  -h         help\n"
 	  "\n"
