@@ -4,6 +4,7 @@ sbmp is a free simple image manipulation program for the command line.
 - sbmp only depends on [SDL2](https://www.libsdl.org), which must be installed
   before compilation.
 - To compile sbmp run `make`.
+- It's possible to compile sbmp without any grphic interface with `make nogui`
 
 ## img lib
 [`img.h`](./img.h), used by sbmp, is an [stb-style](https://github.com/nothings/stb/blob/master/README.md)
