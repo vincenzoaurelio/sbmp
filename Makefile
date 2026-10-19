@@ -1,10 +1,18 @@
 # Simple Baboon Manipulation Program
 # NCORES: set to the cores number
-CFLAGS = -ggdb -Wall -Wextra -DDEBUG -DNCORES=8 -O2
-LIBS = -lm -pthread `sdl2-config --cflags --libs` 
+CFLAGS = -Wall -Wextra  -DNCORES=8 -O2
+LIBS = -lm -pthread  
 
 all: sbmp
 sbmp: main.c img.h
-	$(CC) main.c $(LIBS) $(CFLAGS) -o sbmp
+	$(CC) main.c $(LIBS) `sdl2-config --cflags --libs` $(CFLAGS) -o sbmp
+
+# Compile without graphic interface.
+nogui: main.c img.h
+	$(CC) main.c $(LIBS) $(CFLAGS) -o sbmp-nogui -DNOGUI
+
+debug: main.c img.h
+	$(CC) main.c $(LIBS) `sdl2-config --cflags --libs` $(CFLAGS) -DDEBUG -ggdb -o sbmp-debug
+
 clean:
-	rm ./sbmp
+	rm ./sbmp*

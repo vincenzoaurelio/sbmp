@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <SDL2/SDL.h>
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
@@ -11,6 +10,9 @@
 #include <getopt.h>
 #define IMG_IMPLEMENTATION
 #include "img.h"
+
+#ifndef NOGUI
+#include <SDL2/SDL.h>
 
 int visualize(int **img, const char *title)
 {
@@ -59,6 +61,7 @@ int visualize(int **img, const char *title)
 
   return 1;
 }
+#endif
 
 static int **rgbconv(int **img, float **k)
 {
@@ -93,7 +96,8 @@ int **angle2rgb(float **ori)
   for (size_t i = 0; i < r; ++i) {
     for (size_t j = 0; j < c; ++j) {
 
-      float hp = 3.0f * (ori[i][j] + M_PI) / M_PI;
+      float hp = (ori[i][j] + M_PI) / (2.0f * M_PI) * 6.0f;
+      
       hp = fmodf(hp, 6.0f);
       if (hp < 0.0f) hp += 6.0f;
 
@@ -106,8 +110,7 @@ int **angle2rgb(float **ori)
       case 2: r1 = 0; g1 = 1; b1 = x; break;
       case 3: r1 = 0; g1 = x; b1 = 1; break;
       case 4: r1 = x; g1 = 0; b1 = 1; break;
-      case 5: r1 = 1; g1 = 0; b1 = x; break;
-      default: return NULL;
+      default: r1 = 1; g1 = 0; b1 = x; break;
       }
 
       int ri = (int)(r1 * 255.0f + 0.5f);
@@ -484,15 +487,26 @@ int main(int argc, char **argv)
       }
     }
     fclose(f);
-  } else visualize(img, "sbmp");
+  } else {
+#ifndef NOGUI
+    visualize(img, "sbmp");
+#else
+    goto usage;
+#endif
+  }
   
 
   freemat(img);
   return 0;
 
  usage:
+#ifndef NOGUI
+#define OUTPUT "[-o OUTPUT]"
+#else
+#define OUTPUT "-o OUTPUT"
+#endif
   fprintf(stderr,
-	  "Usage: %s INPUT [-o OUTPUT] [options...]\n"
+	  "Usage: %s INPUT "OUTPUT" [options...]\n"
 	  "  -o FILE    output image\n"
 	  "  -h         help\n"
 	  "\n"
