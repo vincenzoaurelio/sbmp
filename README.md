@@ -8,7 +8,7 @@ sbmp is a free simple image manipulation program for the command line.
 ## img lib
 [`img.h`](./img.h), used by sbmp, is an [stb-style](https://github.com/nothings/stb/blob/master/README.md)
 header-only library. 
-# Usage
+## Usage
 ```text
 ./sbmp INPUT [-o OUTPUT] [options...]
   -o FILE    output image
@@ -37,7 +37,7 @@ Binary operations:
   -F IMG     saturated subtraction
   -H IMG     absolute difference
   -J IMG     multiply (normalized)
-# Examples
+## Examples
 - Convert an image to grayscale and write output on disk
   `./sbmp ./imgs/lena.ppm -g -o ./imgs/lena-gray.ppm`
 - Apply a Gaussian blur
