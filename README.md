@@ -37,6 +37,8 @@ Binary operations:
   -F IMG     saturated subtraction
   -H IMG     absolute difference
   -J IMG     multiply (normalized)
+```
+
 ## Examples
 - Convert an image to grayscale and write output on disk
   `./sbmp ./imgs/lena.ppm -g -o ./imgs/lena-gray.ppm`
