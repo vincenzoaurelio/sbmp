@@ -1404,6 +1404,7 @@ indexed_t *rgb2ind(int **img, size_t n)
   const size_t R = matrows(img);
   const size_t C = matcols(img);
   const size_t N = R * C;
+  if (N == 0) return NULL;
 
   /* The image is represented as one contiguous array; the parallelepiped
    * indices refer into it via a row-major mapping so the algorithm doesn't
