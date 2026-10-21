@@ -376,10 +376,6 @@ int **ind2rgb(indexed_t *img);
   } while(0)
 
 
-#define red(p) (float)((p>>16) & 0xFF)
-#define green(p) (float)((p>>8) & 0xFF)
-#define blu(p) (float)((p & 0xFF))
-
 #define min(i,j) (((i) > (j)) ? (j) : (i))
 #define max(i,j) (((i) < (j)) ? (j) : (i))
 
