@@ -151,7 +151,8 @@ typedef enum {
   OP_NORMSUM  = 1 << 16,
   OP_SATSUB   = 1 << 17,
   OP_SUB      = 1 << 18,
-  OP_MULT     = 1 << 19
+  OP_MULT     = 1 << 19,
+  OP_IND      = 1 << 20
 } flag_t;
 
 #define ISBINARY(k)						\
@@ -178,12 +179,12 @@ static int push_op(flag_t kind, char *arg)
     return 0;
   }
   ops[nops].kind = kind;
-  ops[nops].arg  = arg;
+  ops[nops].arg = arg;
   nops++;
   return 1;
 }
 
-static int **apply_unary(int **img, flag_t kind, const char *arg)
+static int **applyunary(int **img, flag_t kind, const char *arg)
 {
   int **out = NULL;
 
@@ -324,12 +325,21 @@ static int **apply_unary(int **img, flag_t kind, const char *arg)
     return out;
   }
 
+  case OP_IND: {
+    size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
+    indexed_t *indexed = rgb2ind(img, n);
+    if (!indexed) return NULL;
+    out = ind2rgb(indexed);
+    freeindexed(indexed);
+    return out;
+  }
+
   default:
     return NULL;
   }
 }
 
-static int **apply_binary(int **A, int **B, flag_t kind)
+static int **applybinary(int **A, int **B, flag_t kind)
 {
   if (!A || !B) return NULL;
   if (matrows(A) != matrows(B) || matcols(A) != matcols(B)) {
@@ -424,6 +434,7 @@ int main(int argc, char **argv)
     case 'F': if (!push_op(OP_SATSUB, optarg)) goto error; break;
     case 'H': if (!push_op(OP_SUB, optarg)) goto error; break;
     case 'J': if (!push_op(OP_MULT, optarg)) goto error; break;
+    case 'i': if (!push_op(OP_IND, optarg)) goto error; break;
     case '?': goto usage;
     case 'h': goto usage;
     }
@@ -454,9 +465,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: cannot load '%s'\n", ops[i].arg);
         goto error;
       }
-      next = apply_binary(img, B, ops[i].kind);
+      next = applybinary(img, B, ops[i].kind);
       freemat(B);
-    } else next = apply_unary(img, ops[i].kind, ops[i].arg);
+    } else next = applyunary(img, ops[i].kind, ops[i].arg);
 
 
     if (!next) {
@@ -524,6 +535,7 @@ int main(int argc, char **argv)
 	  "  -s         square\n"
 	  "  -r         square root\n"
 	  "  -R         rescale to [0,255]\n"
+	  "  -i N       indexed image with N colors palette\n"
 	  "\n"
 	  "Binary operations:\n"
 	  "  -B IMG     min\n"

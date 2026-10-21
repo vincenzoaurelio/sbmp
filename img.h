@@ -98,6 +98,13 @@ typedef struct
   size_t c;   // columns
 } header_t;   // heaader for both matrices and vectors
 
+typedef struct
+{
+  size_t n;         
+  uint16_t **i; // indexed image 
+  float (*palette)[3]; // n x 3 
+} indexed_t;
+
 /* -----------------------------multithread--------------------------------- */
 typedef struct
 {
@@ -214,7 +221,7 @@ static inline double eps(void); // smallest value for the machine
 
 #define matcpy(dest,src)				\
   do {							\
-    size_t _r = matrows(dest), _c=matcols(dest);	\
+    const size_t _r = matrows(dest), _c=matcols(dest);	\
     if (matrows(src) <= _r && matcols(src) <= _c){	\
       for(size_t _i=0; _i<_r; ++_i)			\
 	for(size_t _j=0; _j<_c; ++_j)			\
@@ -318,7 +325,7 @@ int **loadppm(const char *path);
  * Returns a float** with one channel per pixel. */
 float **rgb2grey(int **img);
 int **pack_image(float **R, float **G, float **B);
-void rescaleu8(float **I);
+void rescaleu8(float **img);
 
 /* ------------------------------ convolution ------------------------------ */
 #ifdef DEBUG
@@ -340,11 +347,34 @@ float **sobelyker(void);
  * dx = conv(I, Kx),   dy = conv(I, Ky)
  * sobelmag(I) = sqrt(dx.^2 + dy.^2)
  * returns a float** of the same shape as I, or NULL on failure. */
-float **sobelmag(float **I);
+float **sobelmag(float **img);
 /* Sobel gradient orientation.
  * sobelori(I) = atan(dy/dx)
  * returns a float** of the same shape as I, or NULL on failure. */
-float **sobelori(float **I);
+float **sobelori(float **img);
+
+/* ------------------------------quantization------------------------------- 
+ * rgb2ind uses Heckbert median cut color quantization.
+ * It takes a packed rgb image and the palette size n, that must be greater
+ * than zero, and returns an indexed_t* or NULL on failure. 
+ * COLOR_CHOSE_FUNC defines the function used by rgb2ind to chose a color for
+ * each parallelepiped. By default it's value is average */
+#ifndef COLOR_CHOSE_FUNC
+#define COLOR_CHOSE_FUNC(p,src,out) average(p,src,out)
+#endif
+indexed_t *rgb2ind(int **img, size_t n);
+int **ind2rgb(indexed_t *img);
+/* freeindexed to free indexed_t */
+#define freeindexed(ind)			\
+  do {						\
+    if (ind) {					\
+      freemat(ind->i);				\
+      free(ind->palette);			\
+      free(ind);				\
+      ind = NULL;				\
+    }						\
+  } while(0)
+
 
 #define red(p) (float)((p>>16) & 0xFF)
 #define green(p) (float)((p>>8) & 0xFF)
@@ -357,7 +387,7 @@ float **sobelori(float **I);
   ({								\
     float **_R = NULL;						\
     if (img) {							\
-      size_t _r = matrows(img), _c = matcols(img);		\
+      const size_t _r = matrows(img), _c = matcols(img);	\
       createmat(_R, _r, _c);					\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -370,7 +400,7 @@ float **sobelori(float **I);
   ({								\
     float **_G = NULL;						\
     if (img) {							\
-      size_t _r = matrows(img), _c = matcols(img);		\
+      const size_t _r = matrows(img), _c = matcols(img);		\
       createmat(_G, _r, _c);					\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -383,7 +413,7 @@ float **sobelori(float **I);
   ({							\
     float **_B = NULL;					\
     if (img) {						\
-      size_t _r = matrows(img), _c = matcols(img);	\
+      const size_t _r = matrows(img), _c = matcols(img);	\
       createmat(_B, _r, _c);				\
       for (size_t _i = 0; _i < _r; ++_i)		\
         for (size_t _j = 0; _j < _c; ++_j)		\
@@ -395,7 +425,7 @@ float **sobelori(float **I);
 /* saturation to 255 */
 #define mulscalar(I,k)					\
   do {							\
-    size_t _r = matrows(I), _c = matcols(I);		\
+    const size_t _r = matrows(I), _c = matcols(I);		\
     if ((k) >= 0) {					\
       for (size_t _i = 0; _i < _r; ++_i)		\
         for (size_t _j = 0; _j < _c; ++_j)		\
@@ -406,7 +436,7 @@ float **sobelori(float **I);
 /* saturation to 255 */
 #define sumscalar(I,k)					\
   do {							\
-    size_t _r = matrows(I), _c = matcols(I);		\
+    const size_t _r = matrows(I), _c = matcols(I);		\
     if ((k) >= 0) {					\
       for (size_t _i = 0; _i < _r; ++_i)		\
         for (size_t _j = 0; _j < _c; ++_j)		\
@@ -417,7 +447,7 @@ float **sobelori(float **I);
 
 #define imgmin(I,J)					\
   do {							\
-    size_t _r = matrows(I), _c = matcols(I);		\
+    const size_t _r = matrows(I), _c = matcols(I);		\
     if (matrows(J) == _r && matcols(J) == _c) {		\
       for (size_t _i = 0; _i < _r; ++_i)		\
         for (size_t _j = 0; _j < _c; ++_j)		\
@@ -428,7 +458,7 @@ float **sobelori(float **I);
 
 #define imgmax(I,J)					\
   do {							\
-    size_t _r = matrows(I), _c = matcols(I);		\
+    const size_t _r = matrows(I), _c = matcols(I);		\
     if (matrows(J) == _r && matcols(J) == _c) {		\
       for (size_t _i = 0; _i < _r; ++_i)		\
         for (size_t _j = 0; _j < _c; ++_j)		\
@@ -439,7 +469,7 @@ float **sobelori(float **I);
 /* saturation to 255 */
 #define satsum(I,J)						\
   do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
+    const size_t _r = matrows(I), _c = matcols(I);			\
     if (matrows(J) == _r && matcols(J) == _c) {			\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -450,7 +480,7 @@ float **sobelori(float **I);
 /* normalized in [0, 255] */
 #define normsum(I,J)						\
   do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
+    const size_t _r = matrows(I), _c = matcols(I);			\
     if (matrows(J) == _r && matcols(J) == _c) {			\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -461,7 +491,7 @@ float **sobelori(float **I);
 /* saturation to 255 */
 #define satsubtraction(I,J)					\
   do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
+    const size_t _r = matrows(I), _c = matcols(I);			\
     if (matrows(J) == _r && matcols(J) == _c) {			\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -472,7 +502,7 @@ float **sobelori(float **I);
 
 #define subtraction(I,J)					\
   do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
+    const size_t _r = matrows(I), _c = matcols(I);			\
     if (matrows(J) == _r && matcols(J) == _c) {			\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -483,7 +513,7 @@ float **sobelori(float **I);
 /* normalized in [0, 255]  */
 #define mult(I,J)						\
   do {								\
-    size_t _r = matrows(I), _c = matcols(I);			\
+    const size_t _r = matrows(I), _c = matcols(I);			\
     if (matrows(J) == _r && matcols(J) == _c) {			\
       for (size_t _i = 0; _i < _r; ++_i)			\
         for (size_t _j = 0; _j < _c; ++_j)			\
@@ -497,7 +527,7 @@ float **sobelori(float **I);
 /* normalized in [0, 255] */
 #define squareroot(I)				\
   do {						\
-    size_t _r = matrows(I), _c = matcols(I);	\
+    const size_t _r = matrows(I), _c = matcols(I);	\
     for (size_t _i = 0; _i < _r; ++_i)		\
       for (size_t _j = 0; _j < _c; ++_j)	\
         (I)[_i][_j] = sqrtf((I)[_i][_j]);	\
@@ -512,6 +542,7 @@ float **sobelori(float **I);
 #include <stdlib.h>
 #include <string.h>
 #include <complex.h>
+
 
 inline void *xmalloc(size_t size) //malloc wrapper
 {
@@ -682,8 +713,7 @@ float **multiply_multithread(float **A, float **B)
 
 float *multiplymatvec_sequential(float **mat, float *vec)
 {
-  size_t m = matrows(mat);
-  size_t n = matcols(mat);
+  const size_t m = matrows(mat), n = matcols(mat);
   if (n != vecsize(vec)) return NULL;
 
   float *product =  NULL;
@@ -866,7 +896,7 @@ float **rgb2grey(int **img)
   float **B = extractblu(img);
 
 
-  size_t r = matrows(img), c = matcols(img);
+  const size_t r = matrows(img), c = matcols(img);
   float **grey = NULL;
   createmat(grey, r, c);
 
@@ -884,7 +914,7 @@ int **pack_image(float **R, float **G, float **B)
 {
   if (!R || !G || !B) return NULL;
 
-  size_t r = matrows(R), c = matcols(R);
+  const size_t r = matrows(R), c = matcols(R);
   if (matrows(G) != r || matcols(G) != c) return NULL;
   if (matrows(B) != r || matcols(B) != c) return NULL;
 
@@ -1003,8 +1033,7 @@ float **sobelmag(float **img)
 
   if (!dx || !dy) goto clean;
 
-  size_t r = matrows(img);
-  size_t c = matcols(img);
+  const size_t r = matrows(img), c = matcols(img);
   createmat(mag, r, c);
 
   for (size_t i = 0; i<r; ++i)
@@ -1033,8 +1062,7 @@ float **sobelori(float **img)
 
   if (!dx || !dy) goto clean;
 
-  size_t r = matrows(img);
-  size_t c = matcols(img);
+  const size_t r = matrows(img), c = matcols(img);
   createmat(ori, r, c);
 
   for (size_t i = 0; i<r; ++i)
@@ -1181,8 +1209,8 @@ float **conv_fft(float **m, float **k)
 
 float **conv_standard(float **m, float **k)
 {
-  size_t r = matrows(m),   c = matcols(m);
-  size_t p = matrows(k)/2, q = matcols(k)/2;
+  const size_t r = matrows(m),   c = matcols(m);
+  const size_t p = matrows(k)/2, q = matcols(k)/2;
 
   float **cv;
   zeros(cv, r, c);
@@ -1221,5 +1249,242 @@ float **conv(float **m, float **k)
 }
 
 /* ========================================================================= */
+
+int **ind2rgb(indexed_t *img)
+{
+  if (!img || !img->i || !img->palette) return NULL;
+
+  const size_t n = img->n;
+  if (n == 0) return NULL;
+
+  const size_t r = matrows(img->i), c = matcols(img->i);
+
+  int *lut = xmalloc(n * sizeof(*lut));
+  for (size_t k = 0; k < n; ++k) {
+    int rr = (int)lrintf(fminf(255, fmaxf(0, img->palette[k][0])));
+    int gg = (int)lrintf(fminf(255, fmaxf(0, img->palette[k][1])));
+    int bb = (int)lrintf(fminf(255, fmaxf(0, img->palette[k][2])));
+    lut[k] = (rr << 16) | (gg << 8) | bb;
+  }
+
+  int **out = NULL;
+  createmat(out, r, c);
+
+  for (size_t i = 0; i < r; ++i) {
+    for (size_t j = 0; j < c; ++j) {
+      uint16_t k = img->i[i][j];
+      if ((size_t)k >= n) goto panic;
+      out[i][j] = lut[k];
+    }
+  }
+
+  free(lut);
+  return out;
+
+ panic:
+  if (lut) free(lut);
+  freemat(out);
+  return NULL;
+}
+
+typedef struct {
+  size_t  *pixels;
+  size_t   count;    /* number of pixels in the parallelepiped */
+  /* bounds */
+  uint8_t  rmin, rmax;
+  uint8_t  gmin, gmax;
+  uint8_t  bmin, bmax;
+} parallelepiped_t;
+
+#define bounds(p, src)						\
+  do {								\
+    (p)->rmin = (p)->gmin = (p)->bmin = 255;			\
+    (p)->rmax = (p)->gmax = (p)->bmax = 0;			\
+    for (size_t _i = 0; _i < (p)->count; ++_i) {		\
+      int _px = (src)[(p)->pixels[_i]];				\
+      uint8_t _r = (uint8_t)((_px >> 16) & 0xFF);		\
+      uint8_t _g = (uint8_t)((_px >>  8) & 0xFF);		\
+      uint8_t _b = (uint8_t)( _px        & 0xFF);		\
+      if (_r < (p)->rmin) (p)->rmin = _r;			\
+      if (_r > (p)->rmax) (p)->rmax = _r;			\
+      if (_g < (p)->gmin) (p)->gmin = _g;			\
+      if (_g > (p)->gmax) (p)->gmax = _g;			\
+      if (_b < (p)->bmin) (p)->bmin = _b;			\
+      if (_b > (p)->bmax) (p)->bmax = _b;			\
+    }								\
+  } while (0)
+
+/* Returns the index of the channel where parallelepiped is longer
+ * 0 = red, 1 = green, 2 = blue */
+#define longest(p)						\
+  ({								\
+    int _dr = (p)->rmax - (p)->rmin;				\
+    int _dg = (p)->gmax - (p)->gmin;				\
+    int _db = (p)->bmax - (p)->bmin;				\
+    int _ax;							\
+    if (_dr >= _dg && _dr >= _db) _ax = 0;			\
+    else if (_dg >= _db)          _ax = 1;			\
+    else                          _ax = 2;			\
+    _ax;							\
+  })
+
+static int cmpkey(const void *a, const void *b)
+{
+  size_t ka = *(const size_t *)a;
+  size_t kb = *(const size_t *)b;
+  return (ka > kb) - (ka < kb);
+}
+
+/* Shrink p in place along its longest axis, splitting at the median pixel.
+ * The lower half stays in p, the upper half is written into u.
+ * Returns 1 on success, 0 otherwise. */
+static int shrink(parallelepiped_t *p, parallelepiped_t *u, const int *src)
+{
+  if (p->count < 2) return 0;
+
+  const int axis = longest(p);
+  const int shift = 16 - 8 * axis;          /* 16 = R, 8 = G, 0 = B */
+
+  size_t *keys = xmalloc(p->count * sizeof(*keys));
+  for (size_t i = 0; i < p->count; ++i) {
+    size_t idx = p->pixels[i];
+    uint64_t c = (uint64_t)((src[idx] >> shift) & 0xFF);
+    /* puts c in the high part of the word and the original
+     * index in the low part. */
+    keys[i] = (c << 48) | (uint64_t)idx; 
+  }
+
+  qsort(keys,p->count,sizeof(*keys),cmpkey);
+
+  /* Original pixel extraction, low part of the word */
+  for(size_t i=0; i<p->count; ++i)
+    p->pixels[i] = (size_t)(keys[i] & ((1ULL<<48)-1));
+
+  free(keys);
+
+  const size_t half = p->count / 2;
+
+  u->pixels = p->pixels + half;
+  u->count  = p->count - half;
+  p->count  = half;
+
+  bounds(p, src);
+  bounds(u, src);
+  return 1;
+}
+
+
+/* Euclidean squared distance */
+static inline int colordist2(int r1, int g1, int b1, int r2, int g2, int b2)
+{
+  int dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+  return dr*dr + dg*dg + db*db;
+}
+
+static void average(const parallelepiped_t *p, const int *src, float out[3])
+{
+  if (p->count == 0) { out[0]=out[1]=out[2]=0.0f; return; }
+  size_t sr = 0, sg = 0, sb = 0;
+  for (size_t i = 0; i < p->count; ++i) {
+    int px = src[p->pixels[i]];
+    sr += (px >> 16) & 0xFF;
+    sg += (px >>  8) & 0xFF;
+    sb +=  px        & 0xFF;
+  }
+  const float w = 1.0 / (float)p->count;
+  out[0] = (float)sr * w;
+  out[1] = (float)sg * w;
+  out[2] = (float)sb * w;
+}
+
+indexed_t *rgb2ind(int **img, size_t n)
+{
+  if (!img || n == 0) return NULL;
+
+  const size_t R = matrows(img);
+  const size_t C = matcols(img);
+  const size_t N = R * C;
+
+  /* The image is represented as one contiguous array; the parallelepiped
+   * indices refer into it via a row-major mapping so the algorithm doesn't
+   * depend on the layout of the matrix. */
+  int *src = NULL;
+  createvec(src, N);
+  size_t k = 0;
+  for(size_t i=0; i<R; ++i) for(size_t j=0; j<C; ++j) src[k++] = img[i][j];
+
+  if (n > N) n = N;
+
+  indexed_t *out = xmalloc(sizeof(*out));
+  out->n = n;
+  out->i = NULL;
+  out->palette = NULL;
+
+  size_t *indices = xmalloc(N * sizeof(*indices));
+  for (size_t i=0; i<N; ++i) indices[i] = i;
+
+  parallelepiped_t *pp = xcalloc(n, sizeof(*pp));
+  pp[0].pixels = indices;
+  pp[0].count = N;
+  bounds(&pp[0], src);
+
+  size_t npp = 1;
+
+  /* chose the parallelepiped to shrink */
+  while (npp < n) {
+    ssize_t best = -1;
+    int best_span = -1;
+
+    for (size_t j=0; j<npp; ++j) {
+      if (pp[j].count < 2) continue;
+
+      int dr = pp[j].rmax - pp[j].rmin;
+      int dg = pp[j].gmax - pp[j].gmin;
+      int db = pp[j].bmax - pp[j].bmin;
+      int span = dr > dg ? dr : dg;
+      if (db > span) span = db;
+
+      if (span > best_span) { best_span = span; best = (ssize_t)j; }
+    }
+
+    if (best < 0) break;
+
+    parallelepiped_t upper = {0};
+    if (!shrink(&pp[best], &upper, src)) break;
+
+    pp[npp++] = upper;
+  }
+
+
+  /* palette building */
+  out->palette = xmalloc(n * sizeof(*out->palette));
+  for (size_t j = 0; j < npp; ++j)
+    COLOR_CHOSE_FUNC(&pp[j], src, out->palette[j]);
+
+  for (size_t j = npp; j < n; ++j) {
+    out->palette[j][0] = out->palette[npp-1][0];
+    out->palette[j][1] = out->palette[npp-1][1];
+    out->palette[j][2] = out->palette[npp-1][2];
+  }
+
+  uint16_t *lut = xmalloc(N * sizeof(*lut));
+  for (size_t j = 0; j < npp; ++j)
+    for (size_t i = 0; i < pp[j].count; ++i)
+      lut[pp[j].pixels[i]] = (uint16_t)j;
+
+  uint16_t **iimg = NULL;
+  createmat(iimg, R, C);
+  for(size_t i=0; i<R; ++i) for(size_t j=0; j<C; ++j) iimg[i][j]=lut[i*C+j];
+
+  out->i = iimg;
+
+  free(lut);
+  free(pp);
+  free(indices);
+  freevec(src);
+
+  return out;
+}
+
 #endif // IMG_IMPLEMENTATION
 #endif // IMG_H
