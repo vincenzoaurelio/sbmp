@@ -8,7 +8,9 @@ sbmp is a free simple image manipulation program for the command line.
 
 ## img lib
 [`img.h`](./img.h), used by sbmp, is an [stb-style](https://github.com/nothings/stb/blob/master/README.md)
-header-only library. In Makefile, or with a macro it can be specified the core
+header-only library.
+
+In [`Makefile`](./Makefile), or with a macro, it can be specified the core
 number, `NCORES` and `COLOR_CHOSE_FUNC`, the function used in `rgb2ind` to
 chose a color for each parallelepiped, that must have the signature
 ```c
