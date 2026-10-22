@@ -369,6 +369,7 @@ float **sobelori(float **img);
 #endif
 indexed_t *rgb2ind(int **img, size_t n);
 int **ind2rgb(indexed_t *img);
+indexed_t *dithering(indexed_t *img);
 /* freeindexed to free indexed_t */
 #define freeindexed(ind)			\
   do {						\
@@ -384,44 +385,23 @@ int **ind2rgb(indexed_t *img);
 #define min(i,j) (((i) > (j)) ? (j) : (i))
 #define max(i,j) (((i) < (j)) ? (j) : (i))
 
-#define extractred(img)						\
-  ({								\
-    float **_R = NULL;						\
+#define xchannels(img, R, G, B)					\
+  do{								\
     if (img) {							\
       const size_t _r = matrows(img), _c = matcols(img);	\
-      createmat(_R, _r, _c);					\
-      for (size_t _i = 0; _i < _r; ++_i)			\
-        for (size_t _j = 0; _j < _c; ++_j)			\
-          _R[_i][_j] = (float)(((img)[_i][_j] >> 16) & 0xFF);	\
+      createmat(R, _r, _c);					\
+      createmat(G, _r, _c);					\
+      createmat(B, _r, _c);					\
+      for (size_t _i = 0; _i < _r; ++_i){			\
+        for (size_t _j = 0; _j < _c; ++_j){			\
+          R[_i][_j] = (float)(((img)[_i][_j] >> 16) & 0xFF);	\
+	  G[_i][_j] = (float)(((img)[_i][_j] >> 8) & 0xFF);	\
+          B[_i][_j] = (float)((img)[_i][_j] & 0xFF);		\
+	}							\
+      }								\
     }								\
-    _R;								\
-  })
+  } while(0)
 
-#define extractgreen(img)					\
-  ({								\
-    float **_G = NULL;						\
-    if (img) {							\
-      const size_t _r = matrows(img), _c = matcols(img);		\
-      createmat(_G, _r, _c);					\
-      for (size_t _i = 0; _i < _r; ++_i)			\
-        for (size_t _j = 0; _j < _c; ++_j)			\
-          _G[_i][_j] = (float)(((img)[_i][_j] >> 8) & 0xFF);	\
-    }								\
-    _G;								\
-  })
-
-#define extractblu(img)					\
-  ({							\
-    float **_B = NULL;					\
-    if (img) {						\
-      const size_t _r = matrows(img), _c = matcols(img);	\
-      createmat(_B, _r, _c);				\
-      for (size_t _i = 0; _i < _r; ++_i)		\
-        for (size_t _j = 0; _j < _c; ++_j)		\
-          _B[_i][_j] = (float)((img)[_i][_j] & 0xFF);	\
-    }							\
-    _B;							\
-  })
 
 /* saturation to 255 */
 #define mulscalar(I,k)					\
@@ -892,10 +872,8 @@ int **loadppm(const char *path)
 
 float **rgb2grey(int **img)
 {
-  float **R = extractred(img);
-  float **G = extractgreen(img);
-  float **B = extractblu(img);
-
+  float **R, **G, **B;
+  xchannels(img,R,G,B);
 
   const size_t r = matrows(img), c = matcols(img);
   float **grey = NULL;
@@ -1557,6 +1535,12 @@ indexed_t *rgb2ind(int **img, size_t n)
 
   return out;
 }
+
+indexed_t *dithering(indexed_t *img)
+{
+  
+}
+
 
 #endif // IMG_IMPLEMENTATION
 #endif // IMG_H
