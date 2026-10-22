@@ -67,10 +67,9 @@ static int **rgbconv(int **img, float **k)
 {
   if (!img || !k) return NULL;
 
-  float **R = extractred(img);
-  float **G = extractgreen(img);
-  float **B = extractblu(img);
-
+  float **R=NULL, **G=NULL, **B=NULL;
+  xchannels(img,R,G,B);
+  
   float **Rc = conv(R, k);
   float **Gc = conv(G, k);
   float **Bc = conv(B, k);
@@ -152,7 +151,8 @@ typedef enum {
   OP_SATSUB   = 1 << 17,
   OP_SUB      = 1 << 18,
   OP_MULT     = 1 << 19,
-  OP_IND      = 1 << 20
+  OP_IND      = 1 << 20,
+  OP_DITHER   = 1 << 21
 } flag_t;
 
 #define ISBINARY(k)						\
@@ -274,9 +274,10 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
   case OP_MULSCALAR: {
     if (!arg) return NULL;
     float k = strtof(arg, NULL);
-    float **R = extractred(img);
-    float **G = extractgreen(img);
-    float **B = extractblu(img);
+
+    float **R=NULL, **G=NULL, **B=NULL;
+    xchannels(img,R,G,B);
+    
     mulscalar(R, k); mulscalar(G, k); mulscalar(B, k);
     out = pack_image(R, G, B);
     freemat(R); freemat(G); freemat(B);
@@ -286,9 +287,8 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
   case OP_SUMSCALAR: {
     if (!arg) return NULL;
     float k = strtof(arg, NULL);
-    float **R = extractred(img);
-    float **G = extractgreen(img);
-    float **B = extractblu(img);
+    float **R=NULL, **G=NULL, **B=NULL;
+    xchannels(img,R,G,B);
     sumscalar(R, k); sumscalar(G, k); sumscalar(B, k);
     out = pack_image(R, G, B);
     freemat(R); freemat(G); freemat(B);
@@ -296,9 +296,8 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
   }
 
   case OP_SQUARE: {
-    float **R = extractred(img);
-    float **G = extractgreen(img);
-    float **B = extractblu(img);
+    float **R=NULL, **G=NULL, **B=NULL;
+    xchannels(img,R,G,B);
     square(R); square(G); square(B);
     out = pack_image(R, G, B);
     freemat(R); freemat(G); freemat(B);
@@ -306,9 +305,9 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
   }
 
   case OP_SQRT: {
-    float **R = extractred(img);
-    float **G = extractgreen(img);
-    float **B = extractblu(img);
+    float **R=NULL, **G=NULL, **B=NULL;
+    xchannels(img,R,G,B);
+
     squareroot(R); squareroot(G); squareroot(B);
     out = pack_image(R, G, B);
     freemat(R); freemat(G); freemat(B);
@@ -316,9 +315,8 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
   }
 
   case OP_RESCALE: {
-    float **R = extractred(img);
-    float **G = extractgreen(img);
-    float **B = extractblu(img);
+    float **R=NULL, **G=NULL, **B=NULL;
+    xchannels(img,R,G,B);
     rescaleu8(R); rescaleu8(G); rescaleu8(B);
     out = pack_image(R, G, B);
     freemat(R); freemat(G); freemat(B);
@@ -331,6 +329,15 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
     if (!indexed) return NULL;
     out = ind2rgb(indexed);
     freeindexed(indexed);
+    return out;
+  }
+
+  case OP_DITHER: {
+    size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
+    indexed_t *dit = dithering(img,n);
+    if (!dit) return NULL;
+    out = ind2rgb(dit);
+    freeindexed(dit);
     return out;
   }
 
@@ -347,12 +354,11 @@ static int **applybinary(int **A, int **B, flag_t kind)
     return NULL;
   }
 
-  float **RA = extractred(A);
-  float **GA = extractgreen(A);
-  float **BA = extractblu(A);
-  float **RB = extractred(B);
-  float **GB = extractgreen(B);
-  float **BB = extractblu(B);
+
+  float **RA, **GA, **BA;
+  xchannels(A,RA,GA,BA);
+  float **RB, **GB, **BB;
+  xchannels(B,RB,GB,BB);
 
   if (!RA || !GA || !BA || !RB || !GB || !BB) {
     freemat(RA); freemat(GA); freemat(BA);
@@ -408,7 +414,7 @@ int main(int argc, char **argv)
   int **img = NULL;
 
   const char *optstring =
-    "hVvqi:o:dgG:A:SxymOp:a:srRB:T:D:E:F:H:J:";
+    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:";
 
   int opt;
   while ((opt = getopt(argc, argv, optstring)) != -1) {
@@ -435,6 +441,7 @@ int main(int argc, char **argv)
     case 'H': if (!push_op(OP_SUB, optarg)) goto error; break;
     case 'J': if (!push_op(OP_MULT, optarg)) goto error; break;
     case 'i': if (!push_op(OP_IND, optarg)) goto error; break;
+    case 'd': if (!push_op(OP_DITHER, optarg)) goto error; break;
     case '?': goto usage;
     case 'h': goto usage;
     }
@@ -536,6 +543,7 @@ int main(int argc, char **argv)
 	  "  -r         square root\n"
 	  "  -R         rescale to [0,255]\n"
 	  "  -i N       indexed image with N colors palette\n"
+	  "  -d N       dithering with N color palette\n"
 	  "\n"
 	  "Binary operations:\n"
 	  "  -B IMG     min\n"

@@ -369,7 +369,11 @@ float **sobelori(float **img);
 #endif
 indexed_t *rgb2ind(int **img, size_t n);
 int **ind2rgb(indexed_t *img);
-indexed_t *dithering(indexed_t *img);
+/* Floyd Steinberg error diffusion.
+ * The palette is built from img with Heckbert's algorithm by rgb2ind
+ * The Floyd Steinberg weights are (7/16, 3/16, 5/16, 1/16).
+ * Returns indexed_t* or NULL on failure. */
+indexed_t *dithering(int **img, size_t n);
 /* freeindexed to free indexed_t */
 #define freeindexed(ind)			\
   do {						\
@@ -872,7 +876,7 @@ int **loadppm(const char *path)
 
 float **rgb2grey(int **img)
 {
-  float **R, **G, **B;
+  float **R=NULL, **G=NULL, **B=NULL;
   xchannels(img,R,G,B);
 
   const size_t r = matrows(img), c = matcols(img);
@@ -1534,9 +1538,76 @@ indexed_t *rgb2ind(int **img, size_t n)
   return out;
 }
 
-indexed_t *dithering(indexed_t *img)
+indexed_t *dithering(int **img, size_t n)
 {
-  
+  if (!img || n == 0) return NULL;
+  const size_t p = matrows(img), q = matcols(img);
+
+  indexed_t *base = rgb2ind(img, n);
+  if (!base) return NULL;
+
+  float *pal = NULL;
+  createvec(pal, n * 3);
+  for (size_t k = 0; k < n; ++k) {
+    pal[3*k + 0] = fminf(255.0f, fmaxf(0.0f, base->palette[k][0]));
+    pal[3*k + 1] = fminf(255.0f, fmaxf(0.0f, base->palette[k][1]));
+    pal[3*k + 2] = fminf(255.0f, fmaxf(0.0f, base->palette[k][2]));
+  }
+
+  float **R = NULL, **G = NULL, **B = NULL;
+  xchannels(img,R,G,B);
+
+  indexed_t *out = xmalloc(sizeof(*out));
+  out->n = n;
+  out->palette = base->palette;
+  out->i = NULL;
+  base->palette = NULL;
+  createmat(out->i, p, q);
+
+  for (size_t i = 0; i < p; ++i) {
+    for (size_t j = 0; j < q; ++j) {
+      float r = fminf(255.0f, fmaxf(0.0f, R[i][j]));
+      float g = fminf(255.0f, fmaxf(0.0f, G[i][j]));
+      float b = fminf(255.0f, fmaxf(0.0f, B[i][j]));
+
+      size_t best    = 0;
+      float  best_d2 = INFINITY;
+      for (size_t k = 0; k < base->n; ++k) {
+	float d2 = colordist2(r, g, b,
+			      pal[3*k + 0], pal[3*k + 1], pal[3*k + 2]);
+	if (d2 < best_d2) { best_d2 = d2; best = k; }
+      }
+
+      out->i[i][j] = (uint16_t)best;
+
+      /* errors */
+      float er = r - pal[3*best + 0];
+      float eg = g - pal[3*best + 1];
+      float eb = b - pal[3*best + 2];
+
+      #define DIFFUSE(di, dj, w)                          \
+        do {                                              \
+          size_t _ni = (size_t)((ssize_t)i + (di));       \
+          size_t _nj = (size_t)((ssize_t)j + (dj));       \
+          if (_ni < p && _nj < q) {                       \
+            R[_ni][_nj] += er * (w);                      \
+            G[_ni][_nj] += eg * (w);                      \
+            B[_ni][_nj] += eb * (w);                      \
+          }                                               \
+        } while (0)
+
+      DIFFUSE(0, +1, 7.0f / 16.0f);
+      DIFFUSE(+1, -1, 3.0f / 16.0f);
+      DIFFUSE(+1,  0, 5.0f / 16.0f);
+      DIFFUSE(+1, +1, 1.0f / 16.0f);
+
+      #undef DIFFUSE
+    }
+  }
+
+  freevec(pal);
+  freemat(R); freemat(G); freemat(B);
+  return out;
 }
 
 
