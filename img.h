@@ -1424,11 +1424,9 @@ static int shrink(parallelepiped_t *p, parallelepiped_t *u, const int *src)
 
 
 /* Euclidean squared distance */
-static inline int colordist2(int r1, int g1, int b1, int r2, int g2, int b2)
-{
-  int dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
-  return dr*dr + dg*dg + db*db;
-}
+#define colordist2(r1,g1,b1,r2,g2,b2)			\
+  ((r1-r2)*(r1-r2) + (g1-g2)*(g1-g2) + (b1-b2)*(b1-b2))
+
 
 static void average(const parallelepiped_t *p, const int *src, float out[3])
 {
