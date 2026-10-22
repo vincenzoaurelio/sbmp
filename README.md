@@ -38,6 +38,7 @@ Unary operations:
   -r         square root
   -R         rescale to [0,255]
   -i N       indexed image with N colors palette
+  -d N       dithering with N color palette
 
 Binary operations:
   -B IMG     min
