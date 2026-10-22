@@ -331,6 +331,11 @@ void rescaleu8(float **img);
 #ifdef DEBUG
 float **conv_standard(float **m, float **k);
 float **conv_fft(float **m, float **k);
+float **conv_lut(float **m, float **k);
+/* For conv_lut                                                ***enjambement*
+ * Actually the overhead is more than the gain starting to PxQ=21, so it's
+ * more convenient to use an hardcoded conv that only works for 3x3 kernels,
+ * thats how is done inside conv_standad implementation */
 #endif
 float **conv(float **m, float **k);
 /* Gaussian kernel of size n x n. If sigma <= 0, is used the OpenCV heuristic
@@ -1203,11 +1208,81 @@ float **conv_fft(float **m, float **k)
   return cv;
 }
 
+/* Optimized convolution using lookup tables for small kernels.
+ * It's not convenient to use this function with a PxQ kernel where P*Q>49
+ * due to the size of the lookup tables. In that case the lookup table mul
+ * would not fit in the cache, causing cache misses.
+ * It returns float** or NULL on failure. Kernel sizes must be odd.
+ * Actually the overhead is more than the gain starting to PxQ=21, so it's
+ * more convenient to use an hardcoded conv that only works for 3x3 kernels */
+float **conv_lut(float **m, float **k)
+{
+  const size_t r = matrows(m), c = matcols(m);
+  const size_t P = matrows(k), Q = matcols(k);
+  const size_t K = P * Q;
+  const size_t p = P / 2, q = Q / 2;
+
+  float **cv = NULL;
+  zeros(cv, r, c);
+  if (r == 0 || c == 0) return cv;
+
+  float **mul = NULL;
+  createmat(mul,256,K);
+  for (int i = 0; i<256; ++i)
+    for (size_t j = 0; j<K; ++j)
+      mul[i][j] = (float)i * (*k)[j];   
+
+  /* Flipped offsets */
+  ssize_t *lut = xmalloc(K * sizeof(*lut));
+  for (size_t x = 0; x < P; ++x)
+    for (size_t y = 0; y < Q; ++y)
+      lut[x*Q + y] = ((ssize_t)(P-1-x) - (ssize_t)p) * (ssize_t)c
+	+ (ssize_t)(Q-1-y) - (ssize_t)q;
+
+
+  if (r >= 2*p + 1 && c >= 2*q + 1) {
+    for (size_t i = p; i<r-p; ++i) {
+      size_t row = i * c;
+      for (size_t j = q; j <c-q; ++j) {
+	size_t a = row + j;
+	float t = 0;
+	for (size_t b = 0; b<K; ++b) t += mul[(int)(*m)[a+lut[b]]][b];
+	(*cv)[a] = t;
+      }
+    }
+  }
+
+  freemat(mul);
+  free(lut);
+  return cv;
+}
+
+
 float **conv_standard(float **m, float **k)
 {
   const size_t r = matrows(m),   c = matcols(m);
   const size_t p = matrows(k)/2, q = matcols(k)/2;
 
+  if (p==3 && q==3){
+    float **cv;
+    zeros(cv, r, c);
+
+    //size_t lut[] = {-r-1,-r,-r+1,-1,0,1,r-1,r,r+1};
+    size_t lut[] = {r+1,r,r-1,1,0,+1,-r+1,-r,-r-1};
+    float mul[256][9];
+
+    for (unsigned short i = 0; i < 256; ++i)
+      for (unsigned short j = 0; j < 9; ++j)
+	mul[i][j] = i * (*k)[j];
+        
+    for (size_t a = 0; a<r*c; ++a){
+      float t = 0;
+      for (size_t b = 0; b<9; ++b) t += mul[(int)(*m)[lut[b]+a]][b];
+      (*cv)[a] += t;
+    }
+    return cv;
+  }  
+  
   float **cv;
   zeros(cv, r, c);
 
