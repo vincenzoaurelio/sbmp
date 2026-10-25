@@ -1,4 +1,3 @@
-# Simple Baboon Manipulation Program
 # NCORES: set to the cores number
 # COLOR_CHOSE_FUNC: set to a function with signature
 ##  static void func(const parallelepiped_t *p, const int *src, float out[3]);

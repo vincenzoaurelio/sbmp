@@ -22,7 +22,7 @@
 
 /* =========================================================================
  * Create special matrices and vectors of arbitrary type with dimentions
- n * inside the header.
+ * inside the header.
  * The object parsed to the other functions of the library is a pointer or a
  * pointer to a pointer that hides informations behind the head of the array.
  *
@@ -265,32 +265,7 @@ float dotproduct_sequential(float *a, float *b);
 float **multiply(float **A, float **B);
 float *multiplymatvec(float **mat, float *vec);
 float dotproduct(float *a, float *b);
-
-/* =============================vector sorting============================== */
-/* returns index of n if n is found in the sorted vector vec, -1 otherwise */
-#define binarysearch(vec,n)				\
-  ({							\
-    ssize_t _index =-1;					\
-    size_t _l = 0;					\
-    size_t _r = vecsize(vec);				\
-    while (_l < _r) {					\
-      size_t _mid = _l + (_r-_l)/2;			\
-      if ((vec)[_mid]==(n)) {_index = _mid; break;}	\
-      if ((vec)[_mid]>(n)) _r = _mid;			\
-      else _l=_mid+1;					\
-    }							\
-    _index;						\
-  })
-
-/* returns the greatest element, in absolute value, in a vector.
- * If the vector's length is 0, 0 is returned */
-#define vmax(vec)				\
-  ({						\
-    double _max=0;				\
-    for (size_t _i=0;_i<vecsize(vec);++_i)	\
-      _max=fmax(_max, fabs((vec)[_i]));		\
-    (typeof((vec)[0]))_max;			\
-  })
+float **mpow(float **mat, char exponent); // matrix power
 
 /* returns the smallest element in a matrix */
 #define matmin(mat)					\
@@ -312,10 +287,7 @@ float dotproduct(float *a, float *b);
     _m;							\
   })
 
-
-float **mpow(float **mat, char exponent); // matrix power
-
-/* -----------------------------------img----------------------------------- */
+/* ===================================img=================================== */
 
 /* Read a binary PPM (P6) into an int** */
 int **loadppm(const char *path);
@@ -358,8 +330,9 @@ float **sobelmag(float **img);
  * returns a float** of the same shape as I, or NULL on failure. */
 float **sobelori(float **img);
 
-/* ------------------------------quantization------------------------------- 
- * rgb2ind uses Heckbert median cut color quantization.
+/* -----------------------quantization and dithering------------------------ */
+
+/* rgb2ind uses Heckbert median cut color quantization.
  * It takes a packed rgb image and the palette size n, that must be greater
  * than zero, and returns an indexed_t* or NULL on failure. 
  * COLOR_CHOSE_FUNC defines the function used by rgb2ind to chose a color for
@@ -385,6 +358,7 @@ indexed_t *dithering(int **img, size_t n);
     }						\
   } while(0)
 
+/* ----------------------Artithmetic and logic operators-------------------- */
 
 #define min(i,j) (((i) > (j)) ? (j) : (i))
 #define max(i,j) (((i) < (j)) ? (j) : (i))
@@ -1367,20 +1341,6 @@ typedef struct {
     }								\
   } while (0)
 
-/* Returns the index of the channel where parallelepiped is longer
- * 0 = red, 1 = green, 2 = blue */
-#define longest(p)						\
-  ({								\
-    int _dr = (p)->rmax - (p)->rmin;				\
-    int _dg = (p)->gmax - (p)->gmin;				\
-    int _db = (p)->bmax - (p)->bmin;				\
-    int _ax;							\
-    if (_dr >= _dg && _dr >= _db) _ax = 0;			\
-    else if (_dg >= _db)          _ax = 1;			\
-    else                          _ax = 2;			\
-    _ax;							\
-  })
-
 static int cmpkey(const void *a, const void *b)
 {
   size_t ka = *(const size_t *)a;
@@ -1395,7 +1355,25 @@ static int shrink(parallelepiped_t *p, parallelepiped_t *u, const int *src)
 {
   if (p->count < 2) return 0;
 
+  /* Returns the index of the channel where parallelepiped is longer
+   * 0 = red, 1 = green, 2 = blue */
+  #define longest(p)						\
+    ({								\
+      int _dr = (p)->rmax - (p)->rmin;				\
+      int _dg = (p)->gmax - (p)->gmin;				\
+      int _db = (p)->bmax - (p)->bmin;				\
+      int _ax;							\
+      if (_dr >= _dg && _dr >= _db) _ax = 0;			\
+      else if (_dg >= _db)          _ax = 1;			\
+      else                          _ax = 2;			\
+      _ax;							\
+    })
+
   const int axis = longest(p);
+
+  #undef longest
+
+
   const int shift = 16 - 8 * axis;          /* 16 = R, 8 = G, 0 = B */
 
   size_t *keys = xmalloc(p->count * sizeof(*keys));
@@ -1537,6 +1515,7 @@ indexed_t *rgb2ind(int **img, size_t n)
 
   return out;
 }
+
 
 indexed_t *dithering(int **img, size_t n)
 {
