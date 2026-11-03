@@ -71,6 +71,30 @@ Binary operations:
   ```bash
   ./sbmp ./imgs/peppers2.ppm -p 2
   ```
+
+## Notes on used algorithms
+- `rgb2yuv` function
+    $$
+    \begin{pmatrix} Y\\U\\V \end{pmatrix} =
+    \begin{pmatrix}
+        .299 & .587 & .114\\
+        -.147& -.289& .436\\
+        .615 & -.515&-.100
+    \end{pmatrix}
+    \begin{pmatrix} R\\G\\B \end{pmatrix}
+    $$
+- `yuv2rgb` function
+    $$
+     \begin{pmatrix}
+        .299 & .587 & .114\\
+        -.147& -.289& .436\\
+        .615 & -.515&-.100
+     \end{pmatrix}^{-1}
+     \begin{pmatrix} Y\\U\\V \end{pmatrix} =
+     \begin{pmatrix} R\\G\\B \end{pmatrix}
+    $$
+
+ 
 ## License
 This project is licensed under the BSD 3-Clause License - see the
 [LICENSE](LICENSE) file for details.

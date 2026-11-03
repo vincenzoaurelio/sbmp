@@ -157,9 +157,17 @@ typedef enum {
 } flag_t;
 
 #define MAX_OPS 128
+
 #define ISBINARY(k)						\
   ((k) & (OP_IMGMIN | OP_IMGMAX | OP_SATSUM | OP_NORMSUM |	\
           OP_SATSUB | OP_SUB | OP_MULT))
+
+#define ISCOLOR(k)						\
+  ((k) & (OP_IND | OP_DITHER | OP_IMGMIN | OP_IMGMAX |		\
+          OP_SATSUM | OP_SATSUB))
+
+#define ISLUMA(k)						\
+  (!ISBINARY(k) && !ISCOLOR(k))
 
 typedef struct {
   flag_t kind;
@@ -325,7 +333,7 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
 
   case OP_IND: {
     size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
-    indexed_t *indexed = rgb2ind(img, n);
+    ind_t *indexed = rgb2ind(img, n);
     if (!indexed) return NULL;
     out = ind2rgb(indexed);
     freeindexed(indexed);
@@ -334,7 +342,7 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
 
   case OP_DITHER: {
     size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
-    indexed_t *dit = dithering(img,n);
+    ind_t *dit = dithering(img,n);
     if (!dit) return NULL;
     out = ind2rgb(dit);
     freeindexed(dit);

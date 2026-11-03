@@ -103,7 +103,15 @@ typedef struct
   size_t n;         
   uint16_t **i; // indexed image 
   float (*palette)[3]; // n x 3 
-} indexed_t;
+} ind_t;
+
+typedef struct
+{
+  float **Y;   /* luma,   0 .. 255       */
+  float **U;   /* chroma, roughly [-74, +111]  */
+  float **V;   /* chroma, roughly [-131, +157] */
+  size_t  r, c;
+} yuv_t;
 
 /* -----------------------------multithread--------------------------------- */
 typedef struct
@@ -292,6 +300,20 @@ float **mpow(float **mat, char exponent); // matrix power
 /* Read a binary PPM (P6) into an int** */
 int **loadppm(const char *path);
 
+yuv_t *rgb2yuv(int **img);
+int **yuv2rgb(const yuv_t *yuv);
+
+#define freeyuv(y)                            \
+  do {                                        \
+    if (y) {                                  \
+      freemat((y)->Y);                        \
+      freemat((y)->U);                        \
+      freemat((y)->V);                        \
+      free(y);                                \
+      (y) = NULL;                             \
+    }                                         \
+  } while (0)
+
 /* Convert a packed-RGB int image to float grayscale using weights
  * Y = 0.299*R + 0.587*G + 0.114*B.
  * Returns a float** with one channel per pixel. */
@@ -334,20 +356,20 @@ float **sobelori(float **img);
 
 /* rgb2ind uses Heckbert median cut color quantization.
  * It takes a packed rgb image and the palette size n, that must be greater
- * than zero, and returns an indexed_t* or NULL on failure. 
+ * than zero, and returns an ind_t* or NULL on failure. 
  * COLOR_CHOSE_FUNC defines the function used by rgb2ind to chose a color for
  * each parallelepiped. By default it's value is average */
 #ifndef COLOR_CHOSE_FUNC
 #define COLOR_CHOSE_FUNC(p,src,out) average(p,src,out)
 #endif
-indexed_t *rgb2ind(int **img, size_t n);
-int **ind2rgb(indexed_t *img);
+ind_t *rgb2ind(int **img, size_t n);
+int **ind2rgb(ind_t *img);
 /* Floyd Steinberg error diffusion.
  * The palette is built from img with Heckbert's algorithm by rgb2ind
  * The Floyd Steinberg weights are (7/16, 3/16, 5/16, 1/16).
- * Returns indexed_t* or NULL on failure. */
-indexed_t *dithering(int **img, size_t n);
-/* freeindexed to free indexed_t */
+ * Returns ind_t* or NULL on failure. */
+ind_t *dithering(int **img, size_t n);
+/* freeindexed to free ind_t */
 #define freeindexed(ind)			\
   do {						\
     if (ind) {					\
@@ -1277,7 +1299,7 @@ float **conv(float **m, float **k)
 
 /* ========================================================================= */
 
-int **ind2rgb(indexed_t *img)
+int **ind2rgb(ind_t *img)
 {
   if (!img || !img->i || !img->palette) return NULL;
 
@@ -1426,7 +1448,7 @@ static void average(const parallelepiped_t *p, const int *src, float out[3])
   out[2] = (float)sb * w;
 }
 
-indexed_t *rgb2ind(int **img, size_t n)
+ind_t *rgb2ind(int **img, size_t n)
 {
   if (!img || n == 0) return NULL;
 
@@ -1445,7 +1467,7 @@ indexed_t *rgb2ind(int **img, size_t n)
 
   if (n > N) n = N;
 
-  indexed_t *out = xmalloc(sizeof(*out));
+  ind_t *out = xmalloc(sizeof(*out));
   out->n = n;
   out->i = NULL;
   out->palette = NULL;
@@ -1517,12 +1539,12 @@ indexed_t *rgb2ind(int **img, size_t n)
 }
 
 
-indexed_t *dithering(int **img, size_t n)
+ind_t *dithering(int **img, size_t n)
 {
   if (!img || n == 0) return NULL;
   const size_t p = matrows(img), q = matcols(img);
 
-  indexed_t *base = rgb2ind(img, n);
+  ind_t *base = rgb2ind(img, n);
   if (!base) return NULL;
 
   float *pal = NULL;
@@ -1536,7 +1558,7 @@ indexed_t *dithering(int **img, size_t n)
   float **R = NULL, **G = NULL, **B = NULL;
   xchannels(img,R,G,B);
 
-  indexed_t *out = xmalloc(sizeof(*out));
+  ind_t *out = xmalloc(sizeof(*out));
   out->n = n;
   out->palette = base->palette;
   out->i = NULL;
@@ -1587,6 +1609,70 @@ indexed_t *dithering(int **img, size_t n)
   freevec(pal);
   freemat(R); freemat(G); freemat(B);
   return out;
+}
+
+yuv_t *rgb2yuv(int **img)
+{
+  if (!img) return NULL;
+
+  const size_t r = matrows(img), c = matcols(img);
+  if (r == 0 || c == 0) return NULL;
+
+  yuv_t *yuv = xmalloc(sizeof(*yuv));
+  yuv->Y = yuv->U = yuv->V = NULL;
+
+  createmat(yuv->Y, r, c);
+  createmat(yuv->U, r, c);
+  createmat(yuv->V, r, c);
+
+  for (size_t i = 0; i < r; ++i) {
+    for (size_t j = 0; j < c; ++j) {
+      const int   p = img[i][j];
+      const float R = (float)((p >> 16) & 0xFF);
+      const float G = (float)((p >>  8) & 0xFF);
+      const float B = (float)( p        & 0xFF);
+
+      yuv->Y[i][j] =  .299f * R + .587f * G + .114f * B;
+      yuv->U[i][j] = -.147f * R - .289f * G + .436f * B;
+      yuv->V[i][j] =  .615f * R - .515f * G - .100f * B;
+    }
+  }
+  return yuv;
+}
+
+int **yuv2rgb(const yuv_t *yuv)
+{
+  if (!yuv || !yuv->Y || !yuv->U || !yuv->V) return NULL;
+
+  const size_t r = matrows(yuv->Y), c = matcols(yuv->Y);
+  if (matrows(yuv->U) != r || matcols(yuv->U) != c) return NULL;
+  if (matrows(yuv->V) != r || matcols(yuv->V) != c) return NULL;
+
+  int **img = NULL;
+  createmat(img, r, c);
+
+  for (size_t i = 0; i < r; ++i) {
+    for (size_t j = 0; j < c; ++j) {
+      const float y = yuv->Y[i][j];
+      const float u = yuv->U[i][j];
+      const float v = yuv->V[i][j];
+
+      float R = y             + 1.140f * v;
+      float G = y - 0.395f * u - 0.581f * v;
+      float B = y + 2.032f * u;
+
+      R = fminf(255.0f, fmaxf(0.0f, R));
+      G = fminf(255.0f, fmaxf(0.0f, G));
+      B = fminf(255.0f, fmaxf(0.0f, B));
+
+      int ri = (int)lrintf(R);
+      int gi = (int)lrintf(G);
+      int bi = (int)lrintf(B);
+
+      img[i][j] = (ri << 16) | (gi << 8) | bi;
+    }
+  }
+  return img;
 }
 
 
