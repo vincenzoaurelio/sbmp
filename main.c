@@ -64,24 +64,6 @@ int visualize(int **img, const char *title)
 
 #endif
 
-static int **rgbconv(int **img, float **k)
-{
-  if (!img || !k) return NULL;
-
-  float **R=NULL, **G=NULL, **B=NULL;
-  xchannels(img,R,G,B);
-  
-  float **Rc = conv(R, k);
-  float **Gc = conv(G, k);
-  float **Bc = conv(B, k);
-
-  int **out = pack_image(Rc, Gc, Bc);
-
-  freemat(R);  freemat(G);  freemat(B);
-  freemat(Rc); freemat(Gc); freemat(Bc);
-
-  return out;
-}
 
 int **angle2rgb(float **ori)
 {
@@ -153,7 +135,11 @@ typedef enum {
   OP_SUB      = 1 << 18,
   OP_MULT     = 1 << 19,
   OP_IND      = 1 << 20,
-  OP_DITHER   = 1 << 21
+  OP_DITHER   = 1 << 21,
+  OP_ERODE    = 1 << 22,
+  OP_DILATE   = 1 << 23,
+  OP_OPEN     = 1 << 24,
+  OP_CLOSE    = 1 << 25
 } flag_t;
 
 #define MAX_OPS 128
@@ -180,6 +166,20 @@ static char *input = NULL;
 static char *output = NULL;
 
 
+float **parse_se(const char *arg)
+{
+  if (!arg) return NULL;
+  if (strncmp(arg, "square:", 7) == 0)  
+    return square_se((size_t)strtoul(arg+7, NULL, 10));
+  if (strncmp(arg, "disk:",   5) == 0)
+    return disk_se  ((size_t)strtoul(arg+5, NULL, 10));
+  char *end = NULL;
+  size_t n = (size_t)strtoul(arg, &end, 10);
+  if (end == arg || *end != '\0' || n == 0) return NULL;
+  return square_se(n);
+}
+
+
 static int push_op(flag_t kind, char *arg)
 {
   if (nops >= MAX_OPS) {
@@ -192,17 +192,21 @@ static int push_op(flag_t kind, char *arg)
   return 1;
 }
 
-static int **applyunary(int **img, flag_t kind, const char *arg)
+/* Apply a brightness/geometry op to the Y plane of *yuv in place.
+ * Returns 1 on success, 0 on failure. Does not touch U/V. */
+static int applyunary_luma(yuv_t *yuv, flag_t kind, const char *arg)
 {
-  int **out = NULL;
+  if (!yuv || !yuv->Y) return 0;
 
   switch (kind) {
+
   case OP_GREY: {
-    float **g = rgb2grey(img);
-    if (!g) return NULL;
-    out = pack_image(g, g, g);
-    freemat(g);
-    return out;
+    /* already luma: collapse chroma to zero so yuv2rgb yields grey */
+    const size_t r = matrows(yuv->U), c = matcols(yuv->U);
+    for (size_t i = 0; i < r; ++i)
+      for (size_t j = 0; j < c; ++j)
+        yuv->U[i][j] = yuv->V[i][j] = 0.0f;
+    return 1;
   }
 
   case OP_GAUSS: {
@@ -216,10 +220,13 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
     if (n == 0) n = 5;
     if (n % 2 == 0) n += 1;
     float **k = gaussker(n, sigma);
-    if (!k) return NULL;
-    out = rgbconv(img, k);
+    if (!k) return 0;
+    float **t = conv(yuv->Y, k);
     freemat(k);
-    return out;
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
   case OP_AVERAGE: {
@@ -227,128 +234,152 @@ static int **applyunary(int **img, flag_t kind, const char *arg)
     if (n == 0) n = 3;
     if (n % 2 == 0) n += 1;
     float **k = averageker(n);
-    if (!k) return NULL;
-    out = rgbconv(img, k);
+    if (!k) return 0;
+    float **t = conv(yuv->Y, k);
     freemat(k);
-    return out;
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
   case OP_SHARP: {
     float **k = sharpker();
-    if (!k) return NULL;
-    out = rgbconv(img, k);
+    if (!k) return 0;
+    float **t = conv(yuv->Y, k);
     freemat(k);
-    return out;
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
   case OP_DX: {
     float **k = sobelxker();
-    if (!k) return NULL;
-    out = rgbconv(img, k);
+    if (!k) return 0;
+    float **t = conv(yuv->Y, k);
     freemat(k);
-    return out;
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
   case OP_DY: {
     float **k = sobelyker();
-    if (!k) return NULL;
-    out = rgbconv(img, k);
+    if (!k) return 0;
+    float **t = conv(yuv->Y, k);
     freemat(k);
-    return out;
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
   case OP_MAG: {
-    float **g = rgb2grey(img);
-    if (!g) return NULL;
-    float **m = sobelmag(g);
-    freemat(g);
-    if (!m) return NULL;
-    out = pack_image(m, m, m);
-    freemat(m);
-    return out;
+    float **m = sobelmag(yuv->Y);
+    if (!m) return 0;
+    freemat(yuv->Y);
+    yuv->Y = m;
+    /* grey output */
+    const size_t r = matrows(yuv->U), c = matcols(yuv->U);
+    for (size_t i = 0; i < r; ++i)
+      for (size_t j = 0; j < c; ++j)
+        yuv->U[i][j] = yuv->V[i][j] = 0.0f;
+    return 1;
   }
 
   case OP_ORI: {
-    float **g = rgb2grey(img);
-    if (!g) return NULL;
-    float **o = sobelori(g);
-    freemat(g);
-    if (!o) return NULL;
-    out = angle2rgb(o);
+    float **o = sobelori(yuv->Y);
+    if (!o) return 0;
+    int **rgb = angle2rgb(o);
     freemat(o);
-    return out;
+    if (!rgb) return 0;
+    yuv_t *newy = rgb2yuv(rgb);
+    freemat(rgb);
+    if (!newy) return 0;
+    freemat(yuv->Y); freemat(yuv->U); freemat(yuv->V);
+    yuv->Y = newy->Y; yuv->U = newy->U; yuv->V = newy->V;
+    free(newy);
+    return 1;
   }
 
-  case OP_MULSCALAR: {
-    if (!arg) return NULL;
-    float k = strtof(arg, NULL);
+  case OP_MULSCALAR:
+    if (!arg) return 0;
+    mulscalar(yuv->Y, strtof(arg, NULL));
+    return 1;
 
-    float **R=NULL, **G=NULL, **B=NULL;
-    xchannels(img,R,G,B);
-    
-    mulscalar(R, k); mulscalar(G, k); mulscalar(B, k);
-    out = pack_image(R, G, B);
-    freemat(R); freemat(G); freemat(B);
-    return out;
+  case OP_SUMSCALAR:
+    if (!arg) return 0;
+    sumscalar(yuv->Y, strtof(arg, NULL));
+    return 1;
+
+  case OP_SQUARE:
+    square(yuv->Y);
+    return 1;
+
+  case OP_SQRT:
+    squareroot(yuv->Y);
+    return 1;
+
+  case OP_RESCALE:
+    rescaleu8(yuv->Y);
+    return 1;
+
+  case OP_ERODE:
+  case OP_DILATE:
+  case OP_OPEN:
+  case OP_CLOSE: {
+    if (!arg) return 0;
+    float **se = parse_se(arg);
+    if (!se) { 
+      fprintf(stderr, "Error: bad SE '%s'\n", arg);
+      return 0;
+    }
+    float **t = NULL;
+    if      (kind == OP_ERODE)  t = erode (yuv->Y, se);
+    else if (kind == OP_DILATE) t = dilate(yuv->Y, se);
+    else if (kind == OP_OPEN)   t = opening (yuv->Y, se);
+    else                        t = closing(yuv->Y, se);
+    freemat(se);
+    if (!t) return 0;
+    freemat(yuv->Y);
+    yuv->Y = t;
+    return 1;
   }
 
-  case OP_SUMSCALAR: {
-    if (!arg) return NULL;
-    float k = strtof(arg, NULL);
-    float **R=NULL, **G=NULL, **B=NULL;
-    xchannels(img,R,G,B);
-    sumscalar(R, k); sumscalar(G, k); sumscalar(B, k);
-    out = pack_image(R, G, B);
-    freemat(R); freemat(G); freemat(B);
-    return out;
+  default:
+    return 0;
   }
+}
 
-  case OP_SQUARE: {
-    float **R=NULL, **G=NULL, **B=NULL;
-    xchannels(img,R,G,B);
-    square(R); square(G); square(B);
-    out = pack_image(R, G, B);
-    freemat(R); freemat(G); freemat(B);
-    return out;
-  }
-
-  case OP_SQRT: {
-    float **R=NULL, **G=NULL, **B=NULL;
-    xchannels(img,R,G,B);
-
-    squareroot(R); squareroot(G); squareroot(B);
-    out = pack_image(R, G, B);
-    freemat(R); freemat(G); freemat(B);
-    return out;
-  }
-
-  case OP_RESCALE: {
-    float **R=NULL, **G=NULL, **B=NULL;
-    xchannels(img,R,G,B);
-    rescaleu8(R); rescaleu8(G); rescaleu8(B);
-    out = pack_image(R, G, B);
-    freemat(R); freemat(G); freemat(B);
-    return out;
-  }
-
+static int **applyunary_rgb(int **img, flag_t kind, const char *arg)
+{
+  switch (kind) {
   case OP_IND: {
     size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
-    ind_t *indexed = rgb2ind(img, n);
-    if (!indexed) return NULL;
-    out = ind2rgb(indexed);
-    freeindexed(indexed);
+    ind_t *idx = rgb2ind(img, n);
+    if (!idx) return NULL;
+    int **out = ind2rgb(idx);
+    freeindexed(idx);
     return out;
   }
-
   case OP_DITHER: {
     size_t n = arg ? (size_t)strtoul(arg, NULL, 10) : 256;
-    ind_t *dit = dithering(img,n);
-    if (!dit) return NULL;
-    out = ind2rgb(dit);
-    freeindexed(dit);
+    ind_t *d = dithering(img, n);
+    if (!d) return NULL;
+    int **out = ind2rgb(d);
+    freeindexed(d);
     return out;
   }
-
+  case OP_GREY: {
+    /* fallback if called directly on RGB */
+    float **g = rgb2grey(img);
+    if (!g) return NULL;
+    int **out = pack_image(g, g, g);
+    freemat(g);
+    return out;
+  }
   default:
     return NULL;
   }
@@ -421,8 +452,8 @@ int main(int argc, char **argv)
 {
   int **img = NULL;
 
-  const char *optstring =
-    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:";
+  const char *optstring = 
+      "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:";
 
   int opt;
   while ((opt = getopt(argc, argv, optstring)) != -1) {
@@ -450,6 +481,10 @@ int main(int argc, char **argv)
     case 'J': if (!push_op(OP_MULT, optarg)) goto error; break;
     case 'i': if (!push_op(OP_IND, optarg)) goto error; break;
     case 'd': if (!push_op(OP_DITHER, optarg)) goto error; break;
+    case 'e': if (!push_op(OP_ERODE,  optarg)) goto error; break;
+    case 'l': if (!push_op(OP_DILATE, optarg)) goto error; break;
+    case 'k': if (!push_op(OP_OPEN,   optarg)) goto error; break;
+    case 'c': if (!push_op(OP_CLOSE,  optarg)) goto error; break;
     case '?': goto usage;
     case 'h': goto usage;
     }
@@ -470,29 +505,79 @@ int main(int argc, char **argv)
     goto error;
   }
 
-  /* Operations are applied in order */
-  for (int i = 0; i < nops; ++i) {
-    int **next = NULL;
+  /* Operations are applied in order.
+   *
+   * `img` holds the current RGB image. `yuv` is an optional live YUV
+   * working copy: it is materialized lazily when the first luma op
+   * arrives and kept alive across consecutive luma ops, so a chain like
+   * -G 5 -S -R converts to YUV once. It is flushed back to `img` before
+   * any color/binary op, before output, and at the end.
+   */
+  yuv_t *yuv = NULL;
 
-    if (ISBINARY(ops[i].kind)) {
+  for (int i = 0; i < nops; ++i) {
+    flag_t kind = ops[i].kind;
+
+    if (ISBINARY(kind)) {
+      /* flush pending YUV first */
+      if (yuv) {
+        int **rgb = yuv2rgb(yuv);
+        freeyuv(yuv);
+        if (!rgb) { fprintf(stderr, "Error: yuv2rgb failed\n"); goto error; }
+        freemat(img);
+        img = rgb;
+      }
+
       int **B = loadppm(ops[i].arg);
       if (!B) {
         fprintf(stderr, "Error: cannot load '%s'\n", ops[i].arg);
         goto error;
       }
-      next = applybinary(img, B, ops[i].kind);
+      int **next = applybinary(img, B, kind);
       freemat(B);
-    } else next = applyunary(img, ops[i].kind, ops[i].arg);
+      if (!next) {
+        fprintf(stderr, "Error: operation %d failed\n", i);
+        goto error;
+      }
+      freemat(img);
+      img = next;
 
+    } else if (ISCOLOR(kind)) {
+      /* flush pending YUV, then run in RGB */
+      if (yuv) {
+        int **rgb = yuv2rgb(yuv);
+        freeyuv(yuv);
+        if (!rgb) { fprintf(stderr, "Error: yuv2rgb failed\n"); goto error; }
+        freemat(img);
+        img = rgb;
+      }
+      int **next = applyunary_rgb(img, kind, ops[i].arg);
+      if (!next) {
+        fprintf(stderr, "Error: operation %d failed\n", i);
+        goto error;
+      }
+      freemat(img);
+      img = next;
 
-    if (!next) {
-      fprintf(stderr, "Error: operation %d failed\n", i);
-      goto error;
+    } else { /* ISLUMA */
+      if (!yuv) {
+        yuv = rgb2yuv(img);
+        if (!yuv) { fprintf(stderr, "Error: rgb2yuv failed\n"); goto error; }
+      }
+      if (!applyunary_luma(yuv, kind, ops[i].arg)) {
+        fprintf(stderr, "Error: operation %d failed\n", i);
+        goto error;
+      }
     }
+  }
+
+  /* flush any pending YUV before output */
+  if (yuv) {
+    int **rgb = yuv2rgb(yuv);
+    freeyuv(yuv);
+    if (!rgb) { fprintf(stderr, "Error: yuv2rgb failed\n"); goto error; }
     freemat(img);
-
-    img = next;
-
+    img = rgb;
   }
 
   /* output */
@@ -552,6 +637,11 @@ int main(int argc, char **argv)
 	  "  -R         rescale to [0,255]\n"
 	  "  -i N       indexed image with N colors palette\n"
 	  "  -d N       dithering with N color palette\n"
+      "  -e SE      erosion\n" 
+      "             SE: square:N | disk:R | N\n"
+      "  -l SE      dilation\n"
+      "  -k SE      opening (erode then dilate)\n"
+      "  -c SE      closing (dilate then erode)\n"
 	  "\n"
 	  "Binary operations:\n"
 	  "  -B IMG     min\n"

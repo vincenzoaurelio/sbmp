@@ -39,6 +39,12 @@ Unary operations:
   -R         rescale to [0,255]
   -i N       indexed image with N colors palette
   -d N       dithering with N color palette
+  -e SE      erosion 
+             SE: square:N | disk:R | N
+  -l SE      dilation\n"
+  -k SE      opening (erode then dilate)
+  -c SE      closing (dilate then erode)
+
 
 Binary operations:
   -B IMG     min

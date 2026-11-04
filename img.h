@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-/* ================================macros=================================== */
+/* =================================macros=================================== */
 #define EPS 1e-3
 
 #ifndef NCORES     // number of cores
@@ -110,10 +110,9 @@ typedef struct
   float **Y;   /* luma,   0 .. 255       */
   float **U;   /* chroma, roughly [-74, +111]  */
   float **V;   /* chroma, roughly [-131, +157] */
-  size_t  r, c;
 } yuv_t;
 
-/* -----------------------------multithread--------------------------------- */
+/* ------------------------------multithread--------------------------------- */
 typedef struct
 {
   size_t start, end;
@@ -136,17 +135,17 @@ typedef struct
   float *a, *b;
 } dot_t;
 
-/* =========================function signatures============================= */
+/* ==========================function signatures============================= */
 static inline void *xmalloc(size_t size);
 static inline void *xcalloc(size_t n, size_t size);
 
 #ifdef DEBUG
-/* -------------fill with random numbers in a [min, max] interval----------- */
+/* -------------fill with random numbers in a [min, max] interval------------ */
 float *randvec(size_t l, int max);
 float **randmat(size_t r, size_t c, int max);
 #endif
 
-/* -------------------------print data structures--------------------------- */
+/* --------------------------print data structures--------------------------- */
 #define printv(vec)							\
   do {									\
     printf("{");							\
@@ -380,7 +379,22 @@ ind_t *dithering(int **img, size_t n);
     }						\
   } while(0)
 
-/* ----------------------Artithmetic and logic operators-------------------- */
+
+/* -------------------------Morphologie mathématique-------------------------
+ * In French because this section will only be read by them */
+
+/* Structuring element se is an odd float matrixi; non-zero entries are the 
+ * active pixels */
+float **erode (float **m, float **se);
+float **dilate(float **m, float **se);
+float **opening (float **m, float **se);   /* dilate(erode(m)) */
+float **closing(float **m, float **se);    /* erode(dilate(m)) */
+
+/* Built-in structuring elements */
+float **square_se(size_t n);
+float **disk_se(size_t r);
+
+/* ---------------------Aritithmetic and logic operators--------------------- */
 
 #define min(i,j) (((i) > (j)) ? (j) : (i))
 #define max(i,j) (((i) < (j)) ? (j) : (i))
@@ -1673,6 +1687,127 @@ int **yuv2rgb(const yuv_t *yuv)
     }
   }
   return img;
+}
+
+/* ================================morphology================================ */
+
+static inline ssize_t clamp_idx(ssize_t v, ssize_t n)
+{
+  if (v < 0)   return 0;
+  if (v >= n)  return n - 1;
+  return v;
+}
+
+float **erode(float **m, float **se)
+{
+  if (!m || !se) return NULL;
+
+  const size_t R = matrows(m), C = matcols(m);
+  const size_t P = matrows(se), Q = matcols(se);
+  if (P == 0 || Q == 0) return NULL;
+  if ((P & 1) == 0 || (Q & 1) == 0) return NULL;
+
+  const ssize_t p = (ssize_t)(P/2);
+  const ssize_t q = (ssize_t)(Q/2);
+
+  float **out = NULL;
+  zeros(out, R, C);
+
+  for (size_t i = 0; i < R; ++i) {
+    for (size_t j = 0; j < C; ++j) {
+      float acc = INFINITY;
+      for (size_t a = 0; a < P; ++a) {
+        for (size_t b = 0; b < Q; ++b) {
+          if (se[a][b] == 0) continue;
+          ssize_t ii = clamp_idx((ssize_t)i+(ssize_t)a-p, (ssize_t)R);
+          ssize_t jj = clamp_idx((ssize_t)j+(ssize_t)b-q, (ssize_t)C);
+          acc = fminf(acc, m[ii][jj]);
+        }
+      }
+      out[i][j] = acc;
+    }
+  }
+  return out;
+}
+
+float **dilate(float **m, float **se)
+{
+  if (!m || !se) return NULL;
+
+  const size_t R = matrows(m), C = matcols(m);
+  const size_t P = matrows(se), Q = matcols(se);
+  if (P == 0 || Q == 0) return NULL;
+  if ((P & 1) == 0 || (Q & 1) == 0) return NULL;
+
+  const ssize_t p = (ssize_t)(P/2);
+  const ssize_t q = (ssize_t)(Q/2);
+
+  float **out = NULL;
+  zeros(out, R, C);
+
+  for (size_t i = 0; i < R; ++i) {
+    for (size_t j = 0; j < C; ++j) {
+      float acc = -INFINITY;
+      for (size_t a = 0; a < P; ++a) {
+        for (size_t b = 0; b < Q; ++b) {
+          if (se[a][b] == 0.0f) continue;
+          ssize_t ii = clamp_idx((ssize_t)i+(ssize_t)a-p, (ssize_t)R);
+          ssize_t jj = clamp_idx((ssize_t)j+(ssize_t)b-q, (ssize_t)C);
+          acc = fmaxf(acc, m[ii][jj]);
+        }
+      }
+      out[i][j] = acc;
+    }
+  }
+  return out;
+}
+
+float **opening(float **m, float **se)
+{
+  float **t = erode(m, se);
+  if (!t) return NULL;
+  float **o = dilate(t, se);
+  freemat(t);
+  return o;
+}
+
+float **closing(float **m, float **se)
+{
+  float **t = dilate(m, se);
+  if (!t) return NULL;
+  float **o = erode(t, se);
+  freemat(t);
+  return o;
+}
+
+float **square_se(size_t n)
+{
+  if (n == 0) return NULL;
+  if (n % 2 == 0) n += 1;
+  float **se = NULL;
+  zeros(se, n, n);
+  for (size_t i = 0; i < n; ++i)
+    for (size_t j = 0; j < n; ++j)
+      se[i][j] = 1;
+  return se;
+}
+
+
+float **disk_se(size_t r)
+{
+  const size_t n = 2*r + 1;
+  float **se = NULL;
+  zeros(se, n, n);
+  const ssize_t c = (ssize_t)r;
+  const float   r2 = (float)(r * r);
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      const float di = (float)((ssize_t)i - c);
+      const float dj = (float)((ssize_t)j - c);
+      se[i][j] = (di*di + dj*dj <= r2) ? 1 : 0;
+    }
+  }
+  return se;
 }
 
 
