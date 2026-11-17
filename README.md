@@ -58,23 +58,23 @@ Binary operations: -B IMG     min
 ## Examples
 - Convert an image to grayscale and write output on disk
   ```bash
-  ./sbmp ./imgs/lena.ppm -g -o ./imgs/lena-gray.ppm
+  ./sbmp ./imgs/lena.png -g -o ./imgs/lena-gray.png
   ```
 - Apply a Gaussian blur
   ```bash
-  ./sbmp ./imgs/baboon.ppm -G 5
+  ./sbmp ./imgs/baboon.png -G 5
   ```
 - Sharpen an image and write output on disk
   ```bash
-  ./sbmp ./imgs/peppers.ppm -S -o ./imgs/peppers-sharpened.ppm
+  ./sbmp ./imgs/peppers.png -S -o ./imgs/peppers-sharpened.png
   ```
 - Calculate the Sobel magnitude on a grayscale image and write output on disk
   ```bash
-  ./sbmp ./imgs/peppers.ppm -g -m -o ./imgs/peppers-mag.ppm
+  ./sbmp ./imgs/peppers.png -g -m -o ./imgs/peppers-mag.png
   ```
 - Multiply pixel values by a scalar
   ```bash
-  ./sbmp ./imgs/peppers2.ppm -p 2
+  ./sbmp ./imgs/peppers2.png -p 2
   ```
 
 ## License

@@ -8,8 +8,14 @@
 #include <math.h>
 #include <ctype.h>
 #include <getopt.h>
+
 #define IMG_IMPLEMENTATION
 #include "img.h"
+
+#define PNG_IMPLEMENTATION
+#include "png.h"
+#define JPEG_IMPLEMENTATION
+#include "jpeg.h"
 
 #ifndef NOGUI /* the software can be compiled without sdl */
 #include <SDL2/SDL.h>
@@ -446,6 +452,121 @@ static int **applybinary(int **A, int **B, flag_t kind)
   return out;
 }
 
+static int **intpack(const uint8_t *data,
+                               int width, int height, int channels)
+{
+    int **img = NULL;
+    createmat(img, (size_t)height, (size_t)width);
+
+    for (int i = 0; i < height; ++i) {
+        for (int j = 0; j < width; ++j) {
+            const uint8_t *p = data + ((size_t)i * width + j) * channels;
+            int r, g, b;
+
+            if (channels == 1) r=g=b = p[0];
+            else if (channels==3 || channels==4){
+                r=p[0];
+                g=p[1];
+                b=p[2];
+            } else {
+                freemat(img);
+                return NULL;
+            }
+
+            img[i][j] = (r<<16) | (g<<8) | b;
+        }
+    }
+    return img;
+}
+
+int **loadppm(const char *path)
+{
+  int fd = open(path, O_RDONLY);
+  if (fd == -1) return NULL;
+
+  uint8_t *buf = NULL;
+  int **img = NULL;
+
+  off_t size = lseek(fd, 0, SEEK_END);
+  if (size == -1 || lseek(fd, 0, SEEK_SET) == -1) goto panic;
+
+  buf = malloc((size_t) size);
+  if (!buf) goto panic;
+
+  if (read(fd, buf, (size_t) size) != size) goto panic;
+
+  /* magic "P6" */
+  if (size < 3 || strncmp((const char *) buf, "P6", 2) != 0) goto panic;
+
+  uint8_t *p   = buf + 2;
+  uint8_t *end = buf + size;
+
+  size_t vals[3] = {0, 0, 0};
+  for (int i = 0; i < 3; ++i) {
+    for (;;) {
+      if (p >= end) goto panic;
+      if (isspace(*p)) { p++; continue; }
+      if (*p == '#') { while (p < end && *p != '\n') p++; continue; }
+      break;
+    }
+    if (!isdigit(*p)) goto panic;
+    size_t v = 0;
+    while (p < end && isdigit(*p)) v = v * 10 + (size_t)(*p++ - '0');
+    vals[i] = v;
+  }
+
+  size_t width  = vals[0];
+  size_t height = vals[1];
+
+  if (p < end && isspace(*p)) p++;
+
+  if ((size_t)(end - p) < width * height * 3) goto panic;
+
+  createmat(img, height, width);
+
+  for (size_t i = 0; i < height; ++i) {
+    for (size_t j = 0; j < width; ++j) {
+      int R = *p++;
+      int G = *p++;
+      int B = *p++;
+      img[i][j] = (R << 16) | (G << 8) | B;
+    }
+  }
+
+  free(buf);
+  close(fd);
+  return img;
+
+ panic:
+  if (buf) free(buf);
+  if (img) freemat(img);
+  if (fd >= 0) close(fd);
+  return NULL;
+}
+
+int **loadimg(const char *path)
+{
+    const char *dot = strrchr(path, '.');
+    if (dot) {
+        if (strcasecmp(dot+1, "png") == 0) {
+            png_image *p = png_load(path);
+            if (!p) return NULL;
+            int **img = intpack(p->data, p->width, p->height, p->channels);
+            png_free(p);
+            return img;
+        }
+        if (strcasecmp(dot+1, "jpg") == 0 ||
+            strcasecmp(dot+1, "jpeg") == 0) {
+            jpeg_image *j = jpeg_load(path);
+            if (!j) return NULL;
+            int **img = intpack(j->data, j->width, j->height, j->channels);
+            jpeg_free(j);
+            return img;
+        }
+    }
+    return loadppm(path); // fallback
+}
+
 /* =============================== main =================================== */
 
 int main(int argc, char **argv)
@@ -499,7 +620,7 @@ int main(int argc, char **argv)
     goto usage;
   }
 
-  img = loadppm(input);
+  img = loadimg(input);
   if (!img) {
     fprintf(stderr, "Error: cannot load '%s'\n", input);
     goto error;
@@ -528,7 +649,7 @@ int main(int argc, char **argv)
         img = rgb;
       }
 
-      int **B = loadppm(ops[i].arg);
+      int **B = loadimg(ops[i].arg);
       if (!B) {
         fprintf(stderr, "Error: cannot load '%s'\n", ops[i].arg);
         goto error;
@@ -582,22 +703,25 @@ int main(int argc, char **argv)
 
   /* output */
   if (output) {
-    FILE *f = fopen(output, "wb");
-    if (!f) {
-      fprintf(stderr, "Error: cannot open '%s'\n", output);
-      goto error;
-    }
     size_t r = matrows(img), c = matcols(img);
-    fprintf(f, "P6\n%zu %zu\n255\n", c, r);
+
+    png_image *p = png_create((int)c, (int)r, 3);
+    if (!p) return -1;
+
     for (size_t i = 0; i < r; ++i) {
-      for (size_t j = 0; j < c; ++j) {
-        int p = img[i][j];
-        fputc((p >> 16) & 0xFF, f);
-        fputc((p >>  8) & 0xFF, f);
-        fputc( p        & 0xFF, f);
-      }
+        for (size_t j = 0; j < c; ++j) {
+            int px = img[i][j];
+            uint8_t *dst = p->data + (i * c + j) * 3;
+            dst[0] = (px >> 16) & 0xFF;
+            dst[1] = (px >>  8) & 0xFF;
+            dst[2] =  px        & 0xFF;
+        }
     }
-    fclose(f);
+
+    if (png_save(p, output) != 0) {
+        fprintf(stderr, "Error: writing '%s'\n", output);
+        goto error;
+    }
   } else {
 #ifndef NOGUI
     visualize(img, "sbmp");

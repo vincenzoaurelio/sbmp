@@ -296,9 +296,6 @@ float **mpow(float **mat, char exponent); // matrix power
 
 /* ===================================img=================================== */
 
-/* Read a binary PPM (P6) into an int** */
-int **loadppm(const char *path);
-
 yuv_t *rgb2yuv(int **img);
 int **yuv2rgb(const yuv_t *yuv);
 
@@ -351,7 +348,7 @@ float **sobelmag(float **img);
  * returns a float** of the same shape as I, or NULL on failure. */
 float **sobelori(float **img);
 
-/* -----------------------quantization and dithering------------------------ */
+/* ------------------------quantization and dithering------------------------ */
 
 /* rgb2ind uses Heckbert median cut color quantization.
  * It takes a packed rgb image and the palette size n, that must be greater
@@ -370,8 +367,8 @@ int **ind2rgb(ind_t *img);
 ind_t *dithering(int **img, size_t n);
 /* freeindexed to free ind_t */
 #define freeindexed(ind)			\
-  do {						\
-    if (ind) {					\
+  do {					        	\
+    if (ind) {				    	\
       freemat(ind->i);				\
       free(ind->palette);			\
       free(ind);				\
@@ -393,6 +390,7 @@ float **closing(float **m, float **se);    /* erode(dilate(m)) */
 /* Built-in structuring elements */
 float **square_se(size_t n);
 float **disk_se(size_t r);
+
 
 /* ---------------------Aritithmetic and logic operators--------------------- */
 
@@ -819,70 +817,7 @@ float **mpow(float **mat, char exponent)
   return pow;
 }
 
-int **loadppm(const char *path)
-{
-  int fd = open(path, O_RDONLY);
-  if (fd == -1) return NULL;
 
-  uint8_t *buf = NULL;
-  int **img = NULL;
-
-  off_t size = lseek(fd, 0, SEEK_END);
-  if (size == -1 || lseek(fd, 0, SEEK_SET) == -1) goto panic;
-
-  buf = malloc((size_t) size);
-  if (!buf) goto panic;
-
-  if (read(fd, buf, (size_t) size) != size) goto panic;
-
-  /* magic "P6" */
-  if (size < 3 || strncmp((const char *) buf, "P6", 2) != 0) goto panic;
-
-  uint8_t *p   = buf + 2;
-  uint8_t *end = buf + size;
-
-  size_t vals[3] = {0, 0, 0};
-  for (int i = 0; i < 3; ++i) {
-    for (;;) {
-      if (p >= end) goto panic;
-      if (isspace(*p)) { p++; continue; }
-      if (*p == '#') { while (p < end && *p != '\n') p++; continue; }
-      break;
-    }
-    if (!isdigit(*p)) goto panic;
-    size_t v = 0;
-    while (p < end && isdigit(*p)) v = v * 10 + (size_t)(*p++ - '0');
-    vals[i] = v;
-  }
-
-  size_t width  = vals[0];
-  size_t height = vals[1];
-
-  if (p < end && isspace(*p)) p++;
-
-  if ((size_t)(end - p) < width * height * 3) goto panic;
-
-  createmat(img, height, width);
-
-  for (size_t i = 0; i < height; ++i) {
-    for (size_t j = 0; j < width; ++j) {
-      int R = *p++;
-      int G = *p++;
-      int B = *p++;
-      img[i][j] = (R << 16) | (G << 8) | B;
-    }
-  }
-
-  free(buf);
-  close(fd);
-  return img;
-
- panic:
-  if (buf) free(buf);
-  if (img) freemat(img);
-  if (fd >= 0) close(fd);
-  return NULL;
-}
 
 float **rgb2grey(int **img)
 {
