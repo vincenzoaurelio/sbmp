@@ -294,6 +294,7 @@ float **mpow(float **mat, char exponent); // matrix power
     _m;							\
   })
 
+
 /* ===================================img=================================== */
 
 yuv_t *rgb2yuv(int **img);
@@ -315,7 +316,11 @@ int **yuv2rgb(const yuv_t *yuv);
  * Returns a float** with one channel per pixel. */
 float **rgb2grey(int **img);
 int **pack_image(float **R, float **G, float **B);
-void rescaleu8(float **img);
+
+size_t *imhist(float **img);
+
+void stretch(float **img);
+void equalize(float **img);
 
 /* ------------------------------ convolution ------------------------------ */
 #ifdef DEBUG
@@ -1003,23 +1008,59 @@ float **sobelori(float **img)
   return ori;
 }
 
-void rescaleu8(float **img)
+#define L 0
+#define H 255
+size_t *imhist(float **img)
 {
-  static const int L = 0;
-  static const int H = 255;
+    size_t *v=NULL;
+    createvec(v, 256);
+    memset(v, 0, vecsize(v) * sizeof(*v));
+    for (size_t i=0; i<matrows(img); ++i)
+        for (size_t j=0; j<matcols(img); ++j)
+            ++v[(uint8_t)img[i][j]];
+    return v;
+}
+
+void stretch(float **img)
+{
   uint8_t lut[256];
   float M = matmax(img);
   float m = matmin(img);
   if (M == m) {
-    for (int i = 0; i < 256; ++i) lut[i] = (uint8_t)L;
+    for (int i = 0; i < 256; ++i) lut[i] = L;
   } else {
-    float scale = (float)(H - L) / (float)(M - m);
+    float scale = (H - L) / (float)(M - m);
     for (int i = 0; i < 256; ++i) {
-      float v = ((float)i - (float)m) * scale + (float)L;
-      if (v < (float)L) v = (float)L;
-      if (v > (float)H) v = (float)H;
-      lut[i] = (uint8_t)(v + 0.5f);   /* round */
+      float v = ((float)i - (float)m) * scale + L;
+      if (v<L) v = L;
+      if (v>H) v = H;
+      lut[i] = (uint8_t)lrintf(v);
     }
+  }
+  for (size_t i=0; i<matrows(img); ++i)
+    for (size_t j=0; j<matcols(img); ++j)
+      img[i][j] = lut[(uint8_t)img[i][j]];
+}
+
+void equalize(float **img)
+{
+  uint8_t lut[256];
+  float M = matmax(img);
+  float m = matmin(img);
+  size_t N = matrows(img)*matcols(img);
+  if (M == m) {
+    for (int i = 0; i < 256; ++i) lut[i] = L;
+  } else {
+    size_t *h = imhist(img);
+    float cumsum = 0;
+    for (int i = 0; i < 256; ++i) {
+      cumsum += h[i];
+      float v = H * cumsum/N; 
+      if (v<L) v = L;
+      if (v>H) v = H;
+      lut[i] = (uint8_t)lrintf(v);
+    }
+    freevec(h);
   }
   for (size_t i=0; i<matrows(img); ++i)
     for (size_t j=0; j<matcols(img); ++j)

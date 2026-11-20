@@ -132,7 +132,7 @@ typedef enum {
   OP_SUMSCALAR= 1 << 9,
   OP_SQUARE   = 1 << 10,
   OP_SQRT     = 1 << 11,
-  OP_RESCALE  = 1 << 12,
+  OP_STRETCH  = 1 << 12,
   OP_IMGMIN   = 1 << 13,
   OP_IMGMAX   = 1 << 14,
   OP_SATSUM   = 1 << 15,
@@ -145,7 +145,8 @@ typedef enum {
   OP_ERODE    = 1 << 22,
   OP_DILATE   = 1 << 23,
   OP_OPEN     = 1 << 24,
-  OP_CLOSE    = 1 << 25
+  OP_CLOSE    = 1 << 25,
+  OP_EQUALIZE = 1 << 26
 } flag_t;
 
 #define MAX_OPS 128
@@ -328,8 +329,12 @@ static int applyunary_luma(yuv_t *yuv, flag_t kind, const char *arg)
     squareroot(yuv->Y);
     return 1;
 
-  case OP_RESCALE:
-    rescaleu8(yuv->Y);
+  case OP_STRETCH:
+    stretch(yuv->Y);
+    return 1;
+
+  case OP_EQUALIZE:
+    equalize(yuv->Y);
     return 1;
 
   case OP_ERODE:
@@ -592,7 +597,8 @@ int main(int argc, char **argv)
     case 'a': if (!push_op(OP_SUMSCALAR, optarg)) goto error; break;
     case 's': if (!push_op(OP_SQUARE, NULL)) goto error; break;
     case 'r': if (!push_op(OP_SQRT, NULL)) goto error; break;
-    case 'R': if (!push_op(OP_RESCALE, NULL)) goto error; break;
+    case 'R': if (!push_op(OP_STRETCH, NULL)) goto error; break;
+    case 'q': if (!push_op(OP_EQUALIZE, NULL)) goto error; break;
     case 'B': if (!push_op(OP_IMGMIN, optarg)) goto error; break;
     case 'T': if (!push_op(OP_IMGMAX, optarg)) goto error; break;
     case 'D': if (!push_op(OP_SATSUM, optarg)) goto error; break;
@@ -758,7 +764,8 @@ int main(int argc, char **argv)
 	  "  -a K       add scalar K (saturating)\n"
 	  "  -s         square\n"
 	  "  -r         square root\n"
-	  "  -R         rescale to [0,255]\n"
+	  "  -R         stretch image\n"
+	  "  -q         equalize image\n"
 	  "  -i N       indexed image with N colors palette\n"
 	  "  -d N       dithering with N color palette\n"
       "  -e SE      erosion\n" 
