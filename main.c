@@ -610,8 +610,9 @@ int main(int argc, char **argv)
 {
   int **img = NULL;
 
-  const char *optstring = 
-    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:z:"; // TODO
+  const char *optstring =
+    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:z:";
+
   int opt;
   while ((opt = getopt(argc, argv, optstring)) != -1) {
     switch (opt) {

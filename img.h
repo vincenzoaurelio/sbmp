@@ -1838,12 +1838,20 @@ int **bilinear(int **img, float scale)
             const int c = img[y1][x0];
             const int d = img[y1][x1];
 
-            const int ri = clamp255(lrintf(((1.0-dx)*(1.0-dy))*red(a) + 
-    (dx*(1.0-dy))*red(b) + ((1.0-dx)*dy)*red(c) + (dx*dy)*red(d)));
-            const int gi = clamp255(lrintf(((1.0-dx)*(1.0-dy))*green(a) + 
-    (dx*(1.0-dy))*green(b) + ((1.0-dx)*dy)*green(c) + (dx*dy)*green(d)));
-            const int bi = clamp255(lrintf(((1.0-dx)*(1.0-dy))*blue(a) + 
-    (dx*(1.0-dy))*blue(b) + ((1.0-dx)*dy)*blue(c) + (dx*dy)*blue(d)));
+            const int ri = clamp255(lrintf(
+                red(a) + dx*(red(b)-red(a))
+                       + dy*(red(c)-red(a))
+                       + dx*dy*(red(a)-red(b)-red(c)+red(d))));
+            
+            const int gi = clamp255(lrintf(
+                green(a) + dx*(green(b)-green(a))
+                         + dy*(green(c)-green(a))
+                         + dx*dy*(green(a)-green(b)-green(c)+green(d))));
+            
+            const int bi = clamp255(lrintf(
+                blue(a) + dx*(blue(b)-blue(a))
+                        + dy*(blue(c)-blue(a))
+                        + dx*dy*(blue(a)-blue(b)-blue(c)+blue(d))));
 
             out[i][j] = (ri << 16) | (gi << 8) | bi;
         }
