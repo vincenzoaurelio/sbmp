@@ -21,6 +21,7 @@
 #include <SDL2/SDL.h>
 
 int visualize(int **img, const char *title)
+// TODO maybe visualize hist 
 {
   if (!img) return 0;
 
@@ -120,33 +121,34 @@ int **angle2rgb(float **ori)
 }
 
 typedef enum {
-  OP_GREY     = 1 << 0,
-  OP_GAUSS    = 1 << 1,
-  OP_AVERAGE  = 1 << 2,
-  OP_SHARP    = 1 << 3,
-  OP_DX       = 1 << 4,
-  OP_DY       = 1 << 5,
-  OP_MAG      = 1 << 6,
-  OP_ORI      = 1 << 7,
-  OP_MULSCALAR= 1 << 8,
-  OP_SUMSCALAR= 1 << 9,
-  OP_SQUARE   = 1 << 10,
-  OP_SQRT     = 1 << 11,
-  OP_STRETCH  = 1 << 12,
-  OP_IMGMIN   = 1 << 13,
-  OP_IMGMAX   = 1 << 14,
-  OP_SATSUM   = 1 << 15,
-  OP_NORMSUM  = 1 << 16,
-  OP_SATSUB   = 1 << 17,
-  OP_SUB      = 1 << 18,
-  OP_MULT     = 1 << 19,
-  OP_IND      = 1 << 20,
-  OP_DITHER   = 1 << 21,
-  OP_ERODE    = 1 << 22,
-  OP_DILATE   = 1 << 23,
-  OP_OPEN     = 1 << 24,
-  OP_CLOSE    = 1 << 25,
-  OP_EQUALIZE = 1 << 26
+  OP_GREY      = 1 << 0,
+  OP_GAUSS     = 1 << 1,
+  OP_AVERAGE   = 1 << 2,
+  OP_SHARP     = 1 << 3,
+  OP_DX        = 1 << 4,
+  OP_DY        = 1 << 5,
+  OP_MAG       = 1 << 6,
+  OP_ORI       = 1 << 7,
+  OP_MULSCALAR = 1 << 8,
+  OP_SUMSCALAR = 1 << 9,
+  OP_SQUARE    = 1 << 10,
+  OP_SQRT      = 1 << 11,
+  OP_STRETCH   = 1 << 12,
+  OP_IMGMIN    = 1 << 13,
+  OP_IMGMAX    = 1 << 14,
+  OP_SATSUM    = 1 << 15,
+  OP_NORMSUM   = 1 << 16,
+  OP_SATSUB    = 1 << 17,
+  OP_SUB       = 1 << 18,
+  OP_MULT      = 1 << 19,
+  OP_IND       = 1 << 20,
+  OP_DITHER    = 1 << 21,
+  OP_ERODE     = 1 << 22,
+  OP_DILATE    = 1 << 23,
+  OP_OPEN      = 1 << 24,
+  OP_CLOSE     = 1 << 25,
+  OP_EQUALIZE  = 1 << 26,
+  OP_RESIZE    = 1 << 27
 } flag_t;
 
 #define MAX_OPS 128
@@ -157,14 +159,13 @@ typedef enum {
 
 #define ISCOLOR(k)						\
   ((k) & (OP_IND | OP_DITHER | OP_IMGMIN | OP_IMGMAX |		\
-          OP_SATSUM | OP_SATSUB))
+          OP_SATSUM | OP_SATSUB | OP_RESIZE))
 
-#define ISLUMA(k)						\
-  (!ISBINARY(k) && !ISCOLOR(k))
+#define ISLUMA(k) (!ISBINARY(k) && !ISCOLOR(k))
 
 typedef struct {
   flag_t kind;
-  char   *arg;  
+  char   *arg;
 } op_t;
 
 static op_t  ops[MAX_OPS];
@@ -391,6 +392,37 @@ static int **applyunary_rgb(int **img, flag_t kind, const char *arg)
     freemat(g);
     return out;
   }
+
+  case OP_RESIZE: {
+    if (!arg) return NULL;
+
+    char *end = NULL;
+    float scale = strtof(arg, &end);
+    if (end == arg) {
+      fprintf(stderr, "Error: resize scale is not a number: '%s'\n", arg);
+      return NULL;
+    }
+
+    const char *method = "bilinear";
+    if (*end == ':') {
+      method = end + 1;
+    } else if (*end != '\0') {
+      fprintf(stderr, "Error: bad resize argument '%s'\n", arg);
+      return NULL;
+    }
+
+    if (!(scale > 0.0f)) {
+      fprintf(stderr, "Error: resize scale must be > 0\n");
+      return NULL;
+    }
+
+    if (strcmp(method, "nearest") == 0)  return nearest(img, scale);
+    if (strcmp(method, "bilinear") == 0) return bilinear(img, scale);
+
+    fprintf(stderr, "Error: unknown interpolation method '%s' "
+                    "(expected 'bilinear' or 'nearest')\n", method);
+    return NULL;
+  }
   default:
     return NULL;
   }
@@ -579,8 +611,7 @@ int main(int argc, char **argv)
   int **img = NULL;
 
   const char *optstring = 
-      "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:";
-
+    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:z:"; // TODO
   int opt;
   while ((opt = getopt(argc, argv, optstring)) != -1) {
     switch (opt) {
@@ -612,6 +643,7 @@ int main(int argc, char **argv)
     case 'l': if (!push_op(OP_DILATE, optarg)) goto error; break;
     case 'k': if (!push_op(OP_OPEN,   optarg)) goto error; break;
     case 'c': if (!push_op(OP_CLOSE,  optarg)) goto error; break;
+    case 'z': if (!push_op(OP_RESIZE, optarg)) goto error; break;
     case '?': goto usage;
     case 'h': goto usage;
     }
@@ -773,6 +805,7 @@ int main(int argc, char **argv)
       "  -l SE      dilation\n"
       "  -k SE      opening (erode then dilate)\n"
       "  -c SE      closing (dilate then erode)\n"
+      "  -z S[:M]   resize by scale S. M: bilinear|nearest, default bilinear\n"
 	  "\n"
 	  "Binary operations:\n"
 	  "  -B IMG     min\n"

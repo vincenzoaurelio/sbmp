@@ -322,7 +322,11 @@ size_t *imhist(float **img);
 void stretch(float **img);
 void equalize(float **img);
 
-/* ------------------------------ convolution ------------------------------ */
+/* ------------------------------interpolation------------------------------ */
+int **bininear(int **img, float scale);
+int **nearest(int **img, float scale);
+
+/* -------------------------------convolution------------------------------- */
 #ifdef DEBUG
 float **conv_standard(float **m, float **k);
 float **conv_fft(float **m, float **k);
@@ -1067,6 +1071,9 @@ void equalize(float **img)
       img[i][j] = lut[(uint8_t)img[i][j]];
 }
 
+#undef L
+#undef H
+
 /* ===============================Convolution=============================== */
 
 static void fft1d(double complex *a, size_t n, int inverse)
@@ -1785,6 +1792,94 @@ float **disk_se(size_t r)
   }
   return se;
 }
+
+
+#define red(px) (((px) >> 16) & 0xFF)
+#define green(px) (((px) >>  8) & 0xFF)
+#define blue(px) ( (px)        & 0xFF)
+
+static inline int clamp255(long v)
+{
+    return v<0 ? 0 : v>255 ? 255 : (int)v;
+}
+
+int **bilinear(int **img, float scale)
+{
+    if (!img || scale <= 0.0) return NULL;
+
+    const size_t h = matrows(img);
+    const size_t w = matcols(img);
+
+    size_t H = (size_t)lrintf((float)h * scale);
+    size_t W = (size_t)lrintf((float)w * scale);
+    if (H < 1) H = 1;
+    if (W < 1) W = 1;
+
+    int **out = NULL;
+    createmat(out,H,W);
+
+    const float sy = (H>1) ? (float)(h-1)/(float)(H-1) : 0;
+    const float sx = (W>1) ? (float)(w-1)/(float)(W-1) : 0;
+
+    for (size_t i = 0; i < H; ++i) {
+        const float y = (float)i * sy;
+        const size_t y0 = (size_t)y;
+        const size_t y1 = (y0+1 < h) ? y0+1 : h-1;
+        const float dy  = y - (float)y0;
+
+        for (size_t j = 0; j < W; ++j) {
+            const float x = (float)j * sx;
+            const size_t x0 = (size_t)x;
+            const size_t x1 = (x0+1 < w) ? x0+1 : w-1;
+            const float dx  = x - (float)x0;
+
+            const int a = img[y0][x0];
+            const int b = img[y0][x1];
+            const int c = img[y1][x0];
+            const int d = img[y1][x1];
+
+            const int ri = clamp255(lrintf(((1.0-dx)*(1.0-dy))*red(a) + 
+    (dx*(1.0-dy))*red(b) + ((1.0-dx)*dy)*red(c) + (dx*dy)*red(d)));
+            const int gi = clamp255(lrintf(((1.0-dx)*(1.0-dy))*green(a) + 
+    (dx*(1.0-dy))*green(b) + ((1.0-dx)*dy)*green(c) + (dx*dy)*green(d)));
+            const int bi = clamp255(lrintf(((1.0-dx)*(1.0-dy))*blue(a) + 
+    (dx*(1.0-dy))*blue(b) + ((1.0-dx)*dy)*blue(c) + (dx*dy)*blue(d)));
+
+            out[i][j] = (ri << 16) | (gi << 8) | bi;
+        }
+    }
+    return out;
+}
+
+int **nearest(int **img, float scale)
+{
+    if (!img || scale <= 0.0) return NULL;
+
+    const size_t h = matrows(img);
+    const size_t w = matcols(img);
+    if (h == 0 || w == 0) return NULL;
+
+    size_t H = (size_t)lrintf((float)h * scale);
+    size_t W = (size_t)lrintf((float)w * scale);
+    if (H < 1) H = 1;
+    if (W < 1) W = 1;
+
+    int **out = NULL;
+    createmat(out,H,W);
+
+    for (size_t i=0; i<H; ++i) {
+        size_t si = (size_t)((float)i / scale);
+        if (si >= h) si = h-1;
+        for (size_t j=0; j<W; ++j){
+            size_t sj = (size_t)((float)j / scale);
+            if (sj >= w) sj = w - 1;
+            out[i][j] = img[si][sj];
+        }
+    }
+    return out;
+}
+
+
 
 
 #endif // IMG_IMPLEMENTATION
