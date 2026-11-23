@@ -148,7 +148,8 @@ typedef enum {
   OP_OPEN      = 1 << 24,
   OP_CLOSE     = 1 << 25,
   OP_EQUALIZE  = 1 << 26,
-  OP_RESIZE    = 1 << 27
+  OP_RESIZE    = 1 << 27,
+  OP_ROTATE    = 1 << 28
 } flag_t;
 
 #define MAX_OPS 128
@@ -159,7 +160,7 @@ typedef enum {
 
 #define ISCOLOR(k)						\
   ((k) & (OP_IND | OP_DITHER | OP_IMGMIN | OP_IMGMAX |		\
-          OP_SATSUM | OP_SATSUB | OP_RESIZE))
+          OP_SATSUM | OP_SATSUB | OP_RESIZE | OP_ROTATE))
 
 #define ISLUMA(k) (!ISBINARY(k) && !ISCOLOR(k))
 
@@ -411,6 +412,7 @@ static int **applyunary_rgb(int **img, flag_t kind, const char *arg)
       return NULL;
     }
 
+
     if (!(scale > 0.0f)) {
       fprintf(stderr, "Error: resize scale must be > 0\n");
       return NULL;
@@ -423,6 +425,16 @@ static int **applyunary_rgb(int **img, flag_t kind, const char *arg)
                     "(expected 'bilinear' or 'nearest')\n", method);
     return NULL;
   }
+
+  case OP_ROTATE: {
+    if (!arg) return NULL;
+    float theta = strtof(arg, NULL);
+
+    return rotate(img, theta);
+  }
+
+
+
   default:
     return NULL;
   }
@@ -611,7 +623,7 @@ int main(int argc, char **argv)
   int **img = NULL;
 
   const char *optstring =
-    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:z:";
+    "hVvqi:o:gG:A:SxymOp:a:srRB:T:D:E:F:H:J:d:e:l:k:c:z:t:";
 
   int opt;
   while ((opt = getopt(argc, argv, optstring)) != -1) {
@@ -645,6 +657,7 @@ int main(int argc, char **argv)
     case 'k': if (!push_op(OP_OPEN,   optarg)) goto error; break;
     case 'c': if (!push_op(OP_CLOSE,  optarg)) goto error; break;
     case 'z': if (!push_op(OP_RESIZE, optarg)) goto error; break;
+    case 't': if (!push_op(OP_ROTATE, optarg)) goto error; break;
     case '?': goto usage;
     case 'h': goto usage;
     }
@@ -804,9 +817,10 @@ int main(int argc, char **argv)
       "  -e SE      erosion\n" 
       "             SE: square:N | disk:R | N\n"
       "  -l SE      dilation\n"
-      "  -k SE      opening (erode then dilate)\n"
-      "  -c SE      closing (dilate then erode)\n"
+      "  -k SE      opening\n"
+      "  -c SE      closing\n"
       "  -z S[:M]   resize by scale S. M: bilinear|nearest, default bilinear\n"
+      "  -t N       rotate by N degrees clockwise\n"
 	  "\n"
 	  "Binary operations:\n"
 	  "  -B IMG     min\n"

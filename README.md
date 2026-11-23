@@ -36,17 +36,20 @@ Unary operations:
   -a K       add scalar K (saturating)
   -s         square
   -r         square root
-  -R         rescale to [0,255]
+  -R         stretch image
+  -q         equalize image
   -i N       indexed image with N colors palette
   -d N       dithering with N color palette
-  -e SE      erosion 
+  -e SE      erosion
              SE: square:N | disk:R | N
-  -l SE      dilation\n"
-  -k SE      opening (erode then dilate)
-  -c SE      closing (dilate then erode)
+  -l SE      dilation
+  -k SE      opening
+  -c SE      closing
+  -z S[:M]   resize by scale S. M: bilinear|nearest, default bilinear
+  -t N       rotate by N degrees clockwise
 
-
-Binary operations: -B IMG     min
+Binary operations:
+  -B IMG     min
   -T IMG     max
   -D IMG     saturated sum
   -E IMG     average (normalized sum)

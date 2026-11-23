@@ -322,6 +322,7 @@ size_t *imhist(float **img);
 void stretch(float **img);
 void equalize(float **img);
 
+int **rotate(int **img, float theta);
 /* ------------------------------interpolation------------------------------ */
 int **bininear(int **img, float scale);
 int **nearest(int **img, float scale);
@@ -1853,7 +1854,7 @@ int **bilinear(int **img, float scale)
                         + dy*(blue(c)-blue(a))
                         + dx*dy*(blue(a)-blue(b)-blue(c)+blue(d))));
 
-            out[i][j] = (ri << 16) | (gi << 8) | bi;
+            out[i][j] = (ri<<16) | (gi<<8) | bi;
         }
     }
     return out;
@@ -1887,7 +1888,57 @@ int **nearest(int **img, float scale)
     return out;
 }
 
+/*  a---------b      .--->         A---a-------B
+ *  |         |     /              |  / '.     |
+ *  |         |     |     |        | /    '.   |
+ *  |         |     \     /        |/       '. |
+ *  c---------d      '---'         c          'b
+ *                                 |'.        /|
+ *   .-                            |  '.     / |
+ *   |  X = round(x*ct - y*st)     |    '.  /  |
+ *  -'                             C------'d---D
+ *   |  Y = round(x*st + y*ct)
+ *   '-
+ *   .-
+ *   |  x = round(X*ct + Y*st)
+ *  -'
+ *   |  y = round(X*ct - Y*st)
+ *   '- 
+ */
+int **rotate(int **img, float theta)
+{
+    if (!img) return NULL;
+    
+    const size_t h = matrows(img);
+    const size_t w = matcols(img);
+    if (h == 0 || w == 0) return NULL;
+    
+    const float c = cosf(theta * (float)M_PI/180.0);
+    const float s = sinf(theta * (float)M_PI/180.0);
+    
+    size_t H = (size_t)lrintf(fabsf((float)h*c) + fabsf((float)w*s));
+    size_t W = (size_t)lrintf(fabsf((float)h*s) + fabsf((float)w*c));
+    if (H < 1) H = 1;
+    if (W < 1) W = 1;
+    
+    int **out = NULL;
+    zeros(out, H, W);
 
+    const float cx = (float)(w-1) / 2;
+    const float cy = (float)(h-1) / 2;
+    const float Cx = (float)(W-1) / 2;
+    const float Cy = (float)(H-1) / 2;
+
+    for (size_t Y=0; Y<H; ++Y) {
+        for (size_t X=0; X<W; ++X) {
+            const size_t x = lrintf(((float)Y-Cy)*s + ((float)X-Cx)*c + cx);
+            const size_t y = lrintf(((float)Y-Cy)*c - ((float)X-Cx)*s + cy);
+            if (x < w && y < h) out[Y][X] = img[y][x];
+        }
+    }
+    
+    return out;
+}
 
 
 #endif // IMG_IMPLEMENTATION
